@@ -9,7 +9,9 @@
     "start": "bun index.ts",
     "test": "bun test",
     "test:pipeline": "bun scripts/test-pipeline.ts",
+    "test:guardrails": "bun scripts/test-guardrails.ts",
     "smoke": "bun scripts/smoke.ts",
+    "smoke:guardrails": "bun scripts/smoke-guardrails.ts",
     "check-types": "bunx tsc --noEmit",
     "build": "bun build index.ts --outdir dist --target bun"
   },
@@ -20,6 +22,9 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "elysia": "^1.4.29"
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "elysia": "^1.4.29",
+    "yaml": "^2.9.0"
   }
 }

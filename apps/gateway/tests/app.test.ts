@@ -81,6 +81,21 @@ describe("gateway HTTP application", () => {
     });
   });
 
+  test("does not expose provider requests when server debugging is disabled", async () => {
+    const { app } = setup();
+
+    const response = await app.handle(
+      chatRequest(
+        { messages: [{ role: "user", content: "Hello" }] },
+        { "x-gateway-debug-provider-request": "true" },
+      ),
+    );
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(body.gateway_debug).toBeUndefined();
+  });
+
   test.each([
     [{}, "INVALID_REQUEST"],
     [{ messages: [] }, "INVALID_REQUEST"],

@@ -1,6 +1,6 @@
 import { createRuntime } from "./src/runtime.ts";
 
-const runtime = createRuntime();
+const runtime = await createRuntime();
 
 runtime.app.listen({
   hostname: runtime.config.host,

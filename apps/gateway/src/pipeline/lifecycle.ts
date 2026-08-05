@@ -5,10 +5,28 @@ import type { Logger } from "../observability/logger.ts";
 export type LifecycleStage =
   | "received"
   | "validated"
+  | "input_guardrails_started"
+  | "input_guardrails_completed"
   | "provider_started"
   | "provider_completed"
+  | "output_guardrails_started"
+  | "output_guardrails_completed"
+  | "retry_started"
   | "completed"
   | "failed";
+
+export type LifecycleDecision = "allow" | "redact" | "block" | "retry";
+
+export interface LifecycleMetadata {
+  policyName?: string;
+  policyVersion?: number;
+  decision?: LifecycleDecision;
+  findingCount?: number;
+  ruleIds?: string[];
+  entityTypes?: string[];
+  attempt?: number;
+  maximumAttempts?: number;
+}
 
 export interface LifecycleEvent {
   requestId: string;
@@ -18,6 +36,14 @@ export interface LifecycleEvent {
   elapsedMs: number;
   failedAt?: Exclude<LifecycleStage, "failed">;
   errorCode?: GatewayErrorCode;
+  policyName?: string;
+  policyVersion?: number;
+  decision?: LifecycleDecision;
+  findingCount?: number;
+  ruleIds?: string[];
+  entityTypes?: string[];
+  attempt?: number;
+  maximumAttempts?: number;
 }
 
 export type LifecycleListener = (event: LifecycleEvent) => void;
@@ -44,9 +70,12 @@ export class LifecycleTracker {
     return this.recordedEvents;
   }
 
-  record(stage: Exclude<LifecycleStage, "failed">): void {
+  record(
+    stage: Exclude<LifecycleStage, "failed">,
+    metadata: LifecycleMetadata = {},
+  ): void {
     this.lastStage = stage;
-    const event = this.createEvent(stage);
+    const event = { ...this.createEvent(stage), ...metadata };
     this.recordedEvents.push(event);
     this.logger.info({ event: "gateway.lifecycle", ...event });
     this.listener?.(event);

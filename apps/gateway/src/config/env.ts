@@ -8,6 +8,8 @@ export interface GatewayConfig {
   modelApiKey?: string;
   defaultModel: string;
   modelTimeoutMs: number;
+  guardrailPolicyPath?: string;
+  debugExposeProviderRequest: boolean;
 }
 
 type Environment = Record<string, string | undefined>;
@@ -35,6 +37,24 @@ function parseInteger(
   }
 
   return value;
+}
+
+function parseBoolean(
+  name: string,
+  rawValue: string | undefined,
+  fallback: boolean,
+): boolean {
+  const value = rawValue?.trim().toLowerCase();
+  if (value === undefined || value === "") {
+    return fallback;
+  }
+  if (value === "true") {
+    return true;
+  }
+  if (value === "false") {
+    return false;
+  }
+  throw new ConfigurationError(`${name} must be "true" or "false".`);
 }
 
 function requiredString(
@@ -82,6 +102,7 @@ export function loadConfig(env: Environment = process.env): GatewayConfig {
   }
 
   const apiKey = env.MODEL_API_KEY?.trim();
+  const guardrailPolicyPath = env.GUARDRAIL_POLICY_PATH?.trim();
 
   return {
     host: requiredString("GATEWAY_HOST", env.GATEWAY_HOST, "0.0.0.0"),
@@ -102,6 +123,12 @@ export function loadConfig(env: Environment = process.env): GatewayConfig {
       env.MODEL_TIMEOUT_MS,
       30_000,
       { min: 1, max: 600_000 },
+    ),
+    guardrailPolicyPath: guardrailPolicyPath || undefined,
+    debugExposeProviderRequest: parseBoolean(
+      "GATEWAY_DEBUG_EXPOSE_PROVIDER_REQUEST",
+      env.GATEWAY_DEBUG_EXPOSE_PROVIDER_REQUEST,
+      false,
     ),
   };
 }

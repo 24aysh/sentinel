@@ -1,0 +1,15 @@
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+enabled: false
+
+metadata:
+  name: disabled-test-policy
+  version: 1
+
+input:
+  - id: block-email
+    detector: pii
+    entities:
+      - EMAIL
+    action:
+      type: block

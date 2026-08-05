@@ -1,4 +1,4 @@
-type ChatCompletionResponse = {
+type GuardrailSmokeResponse = {
   choices?: Array<{
     message?: {
       content?: string;
@@ -8,17 +8,9 @@ type ChatCompletionResponse = {
     code?: string;
     message?: string;
   };
-  gateway_debug?: {
-    provider_request?: {
-      model?: string;
-      messages?: Array<{ role?: string; content?: string }>;
-      temperature?: number;
-      max_tokens?: number;
-      stream?: boolean;
-    };
-  };
 };
 
+const rawEmail = "smoke.gateway@gmail.com";
 const gatewayUrl = (process.env.GATEWAY_URL || "http://localhost:3001").replace(
   /\/+$/,
   "",
@@ -29,21 +21,21 @@ try {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-gateway-debug-provider-request": "true",
+      "x-request-id": "guardrail-e2e-smoke",
     },
     body: JSON.stringify({
       messages: [
         {
           role: "user",
           content:
-            "hi, can you see my email : ayush@gmail.com, if yes, then output it back",
+            `Return only JSON with status "ok", a short message confirming ` +
+            `the gateway works, and contact exactly as provided: ${rawEmail}`,
         },
       ],
     }),
   });
 
-  const body = (await response.json()) as ChatCompletionResponse;
-
+  const body = (await response.json()) as GuardrailSmokeResponse;
   if (!response.ok) {
     const code = body.error?.code || "UNKNOWN_ERROR";
     const message =
@@ -56,19 +48,28 @@ try {
     throw new Error("The gateway returned no assistant response.");
   }
 
-  const providerRequest = body.gateway_debug?.provider_request;
-  if (!providerRequest) {
+  const parsed = JSON.parse(answer) as {
+    status?: unknown;
+    message?: unknown;
+    contact?: unknown;
+  };
+  if (
+    parsed.status !== "ok" ||
+    typeof parsed.message !== "string" ||
+    parsed.message.length === 0 ||
+    parsed.contact !== "<EMAIL>"
+  ) {
     throw new Error(
-      "Provider-request debug output is disabled. Set GATEWAY_DEBUG_EXPOSE_PROVIDER_REQUEST=true and restart the gateway.",
+      "The response did not demonstrate the configured input and output guardrails.",
     );
   }
 
-  console.log("Provider request after input guardrails:");
-  console.log(JSON.stringify(providerRequest, null, 2));
-  console.log("\nAssistant response:");
   console.log(answer);
 } catch (error) {
   const message = error instanceof Error ? error.message : "Unknown error";
-  console.error(`Gateway request failed: ${message}`);
+  console.error(`Guardrail gateway request failed: ${message}`);
+  console.error(
+    "Start the gateway with GUARDRAIL_POLICY_PATH=policies/example-policy.yaml and enabled: true.",
+  );
   process.exit(1);
 }

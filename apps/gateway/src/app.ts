@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { toPublicChatResponse } from "./domain/chat.ts";
+import { toPublicChatResponse, type ChatRequest } from "./domain/chat.ts";
 import { GatewayError } from "./domain/errors.ts";
 import { resolveRequestId } from "./domain/request-context.ts";
 import type { Logger } from "./observability/logger.ts";
@@ -13,7 +13,23 @@ import { chatCompletionBodySchema } from "./transport/http/schemas.ts";
 export interface AppDependencies {
   pipeline: GatewayPipeline;
   logger: Logger;
+  exposeProviderRequest?: boolean;
   version?: string;
+}
+
+function toDebugProviderRequest(request: ChatRequest): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    model: request.model,
+    messages: request.messages.map((message) => ({ ...message })),
+    stream: false,
+  };
+  if (request.temperature !== undefined) {
+    body.temperature = request.temperature;
+  }
+  if (request.maxTokens !== undefined) {
+    body.max_tokens = request.maxTokens;
+  }
+  return body;
 }
 
 function jsonResponse(
@@ -43,6 +59,7 @@ function jsonResponse(
 export function createApp({
   pipeline,
   logger,
+  exposeProviderRequest = false,
   version = "0.1.0",
 }: AppDependencies) {
   return new Elysia({ name: "llm-gateway", normalize: false })
@@ -100,7 +117,21 @@ export function createApp({
             { requestId },
           );
 
-          return jsonResponse(toPublicChatResponse(result.response), {
+          const publicResponse = toPublicChatResponse(result.response);
+          const responseBody =
+            exposeProviderRequest &&
+            request.headers.get("x-gateway-debug-provider-request") === "true"
+              ? {
+                  ...publicResponse,
+                  gateway_debug: {
+                    provider_request: toDebugProviderRequest(
+                      result.providerRequest,
+                    ),
+                  },
+                }
+              : publicResponse;
+
+          return jsonResponse(responseBody, {
             requestId: result.context.requestId,
             durationMs: result.durationMs,
           });

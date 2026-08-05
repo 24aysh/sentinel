@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "status": {
+      "const": "ok"
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contact": {
+      "const": "<EMAIL>"
+    }
+  },
+  "required": ["status", "message", "contact"],
+  "additionalProperties": false
+}
