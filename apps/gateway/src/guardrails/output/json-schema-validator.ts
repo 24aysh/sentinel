@@ -3,10 +3,8 @@ import Ajv2020, {
   type ValidateFunction,
 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
-import type { JsonSchemaValidator } from "../types.ts";
 
-export class CompiledJsonSchemaValidator implements JsonSchemaValidator {
-  readonly schema: unknown;
+export class CompiledJsonSchemaValidator {
   private readonly validateFunction: ValidateFunction;
 
   constructor(schema: unknown) {
@@ -26,7 +24,6 @@ export class CompiledJsonSchemaValidator implements JsonSchemaValidator {
     });
     addFormats(ajv, { mode: "fast" });
 
-    this.schema = schema;
     this.validateFunction = ajv.compile(schema as AnySchema);
   }
 

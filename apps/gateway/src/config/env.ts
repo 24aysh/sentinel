@@ -1,9 +1,7 @@
-export type ModelProviderName = "openai-compatible";
-
 export interface GatewayConfig {
   host: string;
   port: number;
-  modelProvider: ModelProviderName;
+  modelProvider: "openai-compatible";
   modelBaseUrl: string;
   modelApiKey?: string;
   defaultModel: string;
@@ -27,8 +25,7 @@ function parseInteger(
   fallback: number,
   range: { min: number; max: number },
 ): number {
-  const value =
-    rawValue === undefined || rawValue === "" ? fallback : Number(rawValue);
+  const value = rawValue ? Number(rawValue) : fallback;
 
   if (!Number.isInteger(value) || value < range.min || value > range.max) {
     throw new ConfigurationError(
@@ -45,15 +42,9 @@ function parseBoolean(
   fallback: boolean,
 ): boolean {
   const value = rawValue?.trim().toLowerCase();
-  if (value === undefined || value === "") {
-    return fallback;
-  }
-  if (value === "true") {
-    return true;
-  }
-  if (value === "false") {
-    return false;
-  }
+  if (!value) return fallback;
+  if (value === "true") return true;
+  if (value === "false") return false;
   throw new ConfigurationError(`${name} must be "true" or "false".`);
 }
 
@@ -64,10 +55,8 @@ function requiredString(
 ): string {
   const value = rawValue?.trim() || fallback;
 
-  if (!value) {
+  if (!value)
     throw new ConfigurationError(`${name} must be a non-empty string.`);
-  }
-
   return value;
 }
 
@@ -78,18 +67,16 @@ function parseBaseUrl(rawValue: string | undefined): string {
     "https://api.openai.com/v1",
   );
 
-  let url: URL;
   try {
-    url = new URL(value);
-  } catch {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new ConfigurationError("MODEL_BASE_URL must use HTTP or HTTPS.");
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch (error) {
+    if (error instanceof ConfigurationError) throw error;
     throw new ConfigurationError("MODEL_BASE_URL must be a valid URL.");
   }
-
-  if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new ConfigurationError("MODEL_BASE_URL must use HTTP or HTTPS.");
-  }
-
-  return url.toString().replace(/\/$/, "");
 }
 
 export function loadConfig(env: Environment = process.env): GatewayConfig {

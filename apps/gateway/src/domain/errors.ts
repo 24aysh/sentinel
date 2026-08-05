@@ -12,20 +12,16 @@ export type GatewayErrorCode =
   | "INTERNAL_ERROR";
 
 export class GatewayError extends Error {
-  readonly code: GatewayErrorCode;
-  readonly status: number;
   readonly retryAfter?: string;
 
   constructor(
-    code: GatewayErrorCode,
+    readonly code: GatewayErrorCode,
     message: string,
-    status: number,
+    readonly status: number,
     options?: { cause?: unknown; retryAfter?: string },
   ) {
     super(message, { cause: options?.cause });
     this.name = "GatewayError";
-    this.code = code;
-    this.status = status;
     this.retryAfter = options?.retryAfter;
   }
 }

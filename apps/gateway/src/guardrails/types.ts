@@ -25,15 +25,9 @@ export interface InputPolicyAction {
 
 export interface InputPolicyRule {
   id: string;
-  description?: string;
   entities: PiiEntity[];
   roles?: ChatRole[];
   action: InputPolicyAction;
-}
-
-export interface JsonSchemaValidator {
-  readonly schema: unknown;
-  validate(value: unknown): boolean;
 }
 
 export type OutputFailureAction =
@@ -46,14 +40,12 @@ export type OutputFailureAction =
 
 export interface OutputPolicyRule {
   id: string;
-  schemaRef: string;
   schema: unknown;
-  validator: JsonSchemaValidator;
+  validator: { validate(value: unknown): boolean };
   onFailure: OutputFailureAction;
 }
 
 export interface LoadedGuardrailPolicy {
-  sourcePath: string;
   enabled: boolean;
   identity: PolicyIdentity;
   defaults: PolicyDefaults;

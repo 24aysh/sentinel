@@ -1,5 +1,5 @@
 import { Elysia } from "elysia";
-import { toPublicChatResponse, type ChatRequest } from "./domain/chat.ts";
+import { toPublicChatRequest, toPublicChatResponse } from "./domain/chat.ts";
 import { GatewayError } from "./domain/errors.ts";
 import { resolveRequestId } from "./domain/request-context.ts";
 import type { Logger } from "./observability/logger.ts";
@@ -7,53 +7,15 @@ import type { GatewayPipeline } from "./pipeline/gateway-pipeline.ts";
 import {
   createErrorResponse,
   invalidHttpRequest,
+  jsonResponse,
 } from "./transport/http/error-response.ts";
 import { chatCompletionBodySchema } from "./transport/http/schemas.ts";
 
-export interface AppDependencies {
+interface AppDependencies {
   pipeline: GatewayPipeline;
   logger: Logger;
   exposeProviderRequest?: boolean;
   version?: string;
-}
-
-function toDebugProviderRequest(request: ChatRequest): Record<string, unknown> {
-  const body: Record<string, unknown> = {
-    model: request.model,
-    messages: request.messages.map((message) => ({ ...message })),
-    stream: false,
-  };
-  if (request.temperature !== undefined) {
-    body.temperature = request.temperature;
-  }
-  if (request.maxTokens !== undefined) {
-    body.max_tokens = request.maxTokens;
-  }
-  return body;
-}
-
-function jsonResponse(
-  body: unknown,
-  options: {
-    status?: number;
-    requestId?: string;
-    durationMs?: number;
-  } = {},
-): Response {
-  const headers = new Headers({
-    "content-type": "application/json; charset=utf-8",
-  });
-  if (options.requestId) {
-    headers.set("x-request-id", options.requestId);
-  }
-  if (options.durationMs !== undefined) {
-    headers.set("x-gateway-duration-ms", String(options.durationMs));
-  }
-
-  return new Response(JSON.stringify(body), {
-    status: options.status ?? 200,
-    headers,
-  });
 }
 
 export function createApp({
@@ -65,22 +27,19 @@ export function createApp({
   return new Elysia({ name: "llm-gateway", normalize: false })
     .onError(({ code, error, request }) => {
       const requestId = resolveRequestId(request.headers.get("x-request-id"));
-      let publicError: GatewayError;
-
-      if (code === "VALIDATION") {
-        publicError = invalidHttpRequest("Request body failed validation.");
-      } else if (code === "PARSE") {
-        publicError = invalidHttpRequest("Request body must be valid JSON.");
-      } else if (error instanceof GatewayError) {
-        publicError = error;
-      } else {
-        publicError = new GatewayError(
-          "INTERNAL_ERROR",
-          "The gateway could not complete the request.",
-          500,
-          { cause: error },
-        );
-      }
+      const publicError =
+        code === "VALIDATION"
+          ? invalidHttpRequest("Request body failed validation.")
+          : code === "PARSE"
+            ? invalidHttpRequest("Request body must be valid JSON.")
+            : error instanceof GatewayError
+              ? error
+              : new GatewayError(
+                  "INTERNAL_ERROR",
+                  "The gateway could not complete the request.",
+                  500,
+                  { cause: error },
+                );
 
       logger.error({
         event: "gateway.http_error",
@@ -124,7 +83,7 @@ export function createApp({
               ? {
                   ...publicResponse,
                   gateway_debug: {
-                    provider_request: toDebugProviderRequest(
+                    provider_request: toPublicChatRequest(
                       result.providerRequest,
                     ),
                   },

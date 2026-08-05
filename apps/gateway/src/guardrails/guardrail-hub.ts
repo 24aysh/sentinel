@@ -1,7 +1,6 @@
 import type { ChatRequest, ChatResponse } from "../domain/chat.ts";
 import type { RequestContext } from "../domain/request-context.ts";
-import { InputPolicyEvaluator } from "./input/input-evaluator.ts";
-import { createRepairRequest } from "./retry/repair-request.ts";
+import { evaluateInput } from "./input/input-evaluator.ts";
 import type {
   GuardrailHub,
   InputGuardrailResult,
@@ -9,12 +8,29 @@ import type {
   OutputGuardrailResult,
 } from "./types.ts";
 
+function repairRequest(
+  request: ChatRequest,
+  invalidContent: string,
+  schema: unknown,
+  prompt = "Correct the previous response so it satisfies the JSON Schema.",
+): ChatRequest {
+  return {
+    ...request,
+    messages: [
+      ...request.messages,
+      { role: "assistant", content: invalidContent },
+      {
+        role: "user",
+        content: `${prompt}\n\nJSON Schema:\n${JSON.stringify(schema)}\n\nReturn only the corrected JSON value without Markdown or commentary.`,
+      },
+    ],
+  };
+}
+
 export class ConfiguredGuardrailHub implements GuardrailHub {
   readonly identity;
   readonly runtimeFailureMode;
   readonly maximumAttempts;
-
-  private readonly inputEvaluator: InputPolicyEvaluator;
 
   constructor(private readonly policy: LoadedGuardrailPolicy) {
     this.identity = policy.identity;
@@ -23,14 +39,13 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
       policy.output?.onFailure.type === "retry"
         ? policy.output.onFailure.maximumRetries + 1
         : 1;
-    this.inputEvaluator = new InputPolicyEvaluator(policy);
   }
 
   async evaluateInput(
     request: ChatRequest,
     _context: RequestContext,
   ): Promise<InputGuardrailResult> {
-    return this.inputEvaluator.evaluate(request);
+    return evaluateInput(request, this.policy);
   }
 
   async evaluateOutput(
@@ -44,25 +59,14 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
       return { decision: "allow" };
     }
 
-    let invalidContent: string | undefined;
-    for (const choice of response.choices) {
-      let value: unknown;
+    const invalid = response.choices.find(({ message }) => {
       try {
-        value = JSON.parse(choice.message.content.trim());
+        return !output.validator.validate(JSON.parse(message.content.trim()));
       } catch {
-        invalidContent = choice.message.content;
-        break;
+        return true;
       }
-
-      if (!output.validator.validate(value)) {
-        invalidContent = choice.message.content;
-        break;
-      }
-    }
-
-    if (invalidContent === undefined) {
-      return { decision: "allow" };
-    }
+    });
+    if (!invalid) return { decision: "allow" };
 
     if (
       output.onFailure.type === "retry" &&
@@ -71,9 +75,9 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
       return {
         decision: "retry",
         ruleId: output.id,
-        repairRequest: createRepairRequest(
+        repairRequest: repairRequest(
           request,
-          invalidContent,
+          invalid.message.content,
           output.schema,
           output.onFailure.repairPrompt,
         ),

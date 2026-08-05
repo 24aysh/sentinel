@@ -28,7 +28,7 @@ export interface LifecycleMetadata {
   maximumAttempts?: number;
 }
 
-export interface LifecycleEvent {
+export interface LifecycleEvent extends LifecycleMetadata {
   requestId: string;
   model: string;
   stage: LifecycleStage;
@@ -36,35 +36,19 @@ export interface LifecycleEvent {
   elapsedMs: number;
   failedAt?: Exclude<LifecycleStage, "failed">;
   errorCode?: GatewayErrorCode;
-  policyName?: string;
-  policyVersion?: number;
-  decision?: LifecycleDecision;
-  findingCount?: number;
-  ruleIds?: string[];
-  entityTypes?: string[];
-  attempt?: number;
-  maximumAttempts?: number;
 }
 
 export type LifecycleListener = (event: LifecycleEvent) => void;
 
 export class LifecycleTracker {
-  private readonly context: RequestContext;
-  private readonly logger: Logger;
-  private readonly listener?: LifecycleListener;
   private readonly recordedEvents: LifecycleEvent[] = [];
   private lastStage: Exclude<LifecycleStage, "failed"> = "received";
-  private failed = false;
 
   constructor(
-    context: RequestContext,
-    logger: Logger,
-    listener?: LifecycleListener,
-  ) {
-    this.context = context;
-    this.logger = logger;
-    this.listener = listener;
-  }
+    private readonly context: RequestContext,
+    private readonly logger: Logger,
+    private readonly listener?: LifecycleListener,
+  ) {}
 
   get events(): readonly LifecycleEvent[] {
     return this.recordedEvents;
@@ -82,11 +66,6 @@ export class LifecycleTracker {
   }
 
   recordFailure(errorCode: GatewayErrorCode): void {
-    if (this.failed) {
-      return;
-    }
-
-    this.failed = true;
     const event: LifecycleEvent = {
       ...this.createEvent("failed"),
       failedAt: this.lastStage,

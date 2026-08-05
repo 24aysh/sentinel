@@ -10,11 +10,7 @@ import {
   resolveRequestId,
   type RequestContext,
 } from "../domain/request-context.ts";
-import type {
-  GuardrailHub,
-  InputGuardrailResult,
-  OutputGuardrailResult,
-} from "../guardrails/types.ts";
+import type { GuardrailHub } from "../guardrails/types.ts";
 import { silentLogger, type Logger } from "../observability/logger.ts";
 import type { ModelProvider } from "../providers/model-provider.ts";
 import {
@@ -24,7 +20,7 @@ import {
   type LifecycleMetadata,
 } from "./lifecycle.ts";
 
-export interface GatewayPipelineOptions {
+interface GatewayPipelineOptions {
   provider: ModelProvider;
   defaultModel: string;
   guardrails?: GuardrailHub;
@@ -32,11 +28,11 @@ export interface GatewayPipelineOptions {
   lifecycleListener?: LifecycleListener;
 }
 
-export interface PipelineExecutionOptions {
+interface PipelineExecutionOptions {
   requestId?: string;
 }
 
-export interface GatewayPipelineResult {
+interface GatewayPipelineResult {
   response: ChatResponse;
   providerRequest: ChatRequest;
   context: RequestContext;
@@ -96,33 +92,25 @@ function normalizeInput(input: ChatInput, defaultModel: string): ChatRequest {
     return { role: message.role, content: message.content };
   });
 
-  const request: ChatRequest = {
+  return {
     model: input.model?.trim() || defaultModel,
     messages,
+    ...(input.temperature !== undefined && {
+      temperature: input.temperature,
+    }),
+    ...(input.maxTokens !== undefined && { maxTokens: input.maxTokens }),
   };
-
-  if (input.temperature !== undefined) {
-    request.temperature = input.temperature;
-  }
-  if (input.maxTokens !== undefined) {
-    request.maxTokens = input.maxTokens;
-  }
-
-  return request;
 }
 
 function aggregateUsage(
   finalResponse: ChatResponse,
   attempts: readonly ChatResponse[],
 ): ChatResponse {
-  if (attempts.length <= 1) {
-    return finalResponse;
-  }
+  if (attempts.length <= 1) return finalResponse;
 
   const { usage: _ignored, ...responseWithoutUsage } = finalResponse;
-  if (attempts.some((response) => response.usage === undefined)) {
+  if (attempts.some(({ usage }) => usage === undefined))
     return responseWithoutUsage;
-  }
 
   return {
     ...responseWithoutUsage,
@@ -145,12 +133,18 @@ export class GatewayPipeline {
   private readonly logger: Logger;
   private readonly lifecycleListener?: LifecycleListener;
 
-  constructor(options: GatewayPipelineOptions) {
-    this.provider = options.provider;
-    this.defaultModel = options.defaultModel;
-    this.guardrails = options.guardrails;
-    this.logger = options.logger ?? silentLogger;
-    this.lifecycleListener = options.lifecycleListener;
+  constructor({
+    provider,
+    defaultModel,
+    guardrails,
+    logger = silentLogger,
+    lifecycleListener,
+  }: GatewayPipelineOptions) {
+    this.provider = provider;
+    this.defaultModel = defaultModel;
+    this.guardrails = guardrails;
+    this.logger = logger;
+    this.lifecycleListener = lifecycleListener;
   }
 
   async execute(
@@ -175,24 +169,29 @@ export class GatewayPipeline {
       if (this.guardrails) {
         const policyMetadata = this.policyMetadata();
         lifecycle.record("input_guardrails_started", policyMetadata);
-        const inputResult = await this.evaluateInput(request, context);
-        lifecycle.record("input_guardrails_completed", {
-          ...policyMetadata,
+        const inputResult = await this.evaluateGuardrail(
+          "input",
+          context,
+          () => this.guardrails!.evaluateInput(request, context),
+          {
+            decision: "allow" as const,
+            request,
+            findingCount: 0,
+            ruleIds: [],
+            entityTypes: [],
+          },
+        );
+        const decisionMetadata = {
           decision: inputResult.decision,
           findingCount: inputResult.findingCount,
           ruleIds: inputResult.ruleIds,
           entityTypes: inputResult.entityTypes,
+        };
+        lifecycle.record("input_guardrails_completed", {
+          ...policyMetadata,
+          ...decisionMetadata,
         });
-        this.logDecision(
-          "input",
-          inputResult.decision,
-          {
-            findingCount: inputResult.findingCount,
-            ruleIds: inputResult.ruleIds,
-            entityTypes: inputResult.entityTypes,
-          },
-          context,
-        );
+        this.logDecision("input", decisionMetadata, context);
 
         if (inputResult.decision === "block") {
           throw new GatewayError(
@@ -209,7 +208,9 @@ export class GatewayPipeline {
       let attempt = 1;
 
       while (true) {
-        const attemptMetadata = this.attemptMetadata(attempt);
+        const attemptMetadata = this.guardrails
+          ? { attempt, maximumAttempts: this.guardrails.maximumAttempts }
+          : {};
         if (attempt > 1) {
           lifecycle.record("retry_started", attemptMetadata);
         }
@@ -229,11 +230,17 @@ export class GatewayPipeline {
           ...policyMetadata,
           ...attemptMetadata,
         });
-        let outputResult = await this.evaluateOutput(
-          request,
-          response,
+        let outputResult = await this.evaluateGuardrail(
+          "output",
           context,
-          attempt,
+          () =>
+            this.guardrails!.evaluateOutput(
+              request,
+              response,
+              context,
+              attempt,
+            ),
+          { decision: "allow" as const },
         );
         if (
           outputResult.decision === "retry" &&
@@ -241,24 +248,17 @@ export class GatewayPipeline {
         ) {
           outputResult = { decision: "block", ruleId: outputResult.ruleId };
         }
-        lifecycle.record("output_guardrails_completed", {
-          ...policyMetadata,
+        const decisionMetadata = {
           ...attemptMetadata,
           decision: outputResult.decision,
           ruleIds:
             outputResult.decision === "allow" ? [] : [outputResult.ruleId],
+        };
+        lifecycle.record("output_guardrails_completed", {
+          ...policyMetadata,
+          ...decisionMetadata,
         });
-        this.logDecision(
-          "output",
-          outputResult.decision,
-          {
-            attempt,
-            maximumAttempts: this.guardrails.maximumAttempts,
-            ruleIds:
-              outputResult.decision === "allow" ? [] : [outputResult.ruleId],
-          },
-          context,
-        );
+        this.logDecision("output", decisionMetadata, context);
 
         if (outputResult.decision === "block") {
           throw new GatewayError(
@@ -284,12 +284,14 @@ export class GatewayPipeline {
     }
   }
 
-  private async evaluateInput(
-    request: ChatRequest,
+  private async evaluateGuardrail<T>(
+    phase: "input" | "output",
     context: RequestContext,
-  ): Promise<InputGuardrailResult> {
+    evaluate: () => Promise<T>,
+    failOpenResult: T,
+  ): Promise<T> {
     try {
-      return await this.guardrails!.evaluateInput(request, context);
+      return await evaluate();
     } catch (error) {
       if (this.guardrails!.runtimeFailureMode === "closed") {
         throw new GatewayError(
@@ -299,43 +301,8 @@ export class GatewayPipeline {
           { cause: error },
         );
       }
-
-      this.logRuntimeFailure("input", context);
-      return {
-        decision: "allow",
-        request,
-        findingCount: 0,
-        ruleIds: [],
-        entityTypes: [],
-      };
-    }
-  }
-
-  private async evaluateOutput(
-    request: ChatRequest,
-    response: ChatResponse,
-    context: RequestContext,
-    attempt: number,
-  ): Promise<OutputGuardrailResult> {
-    try {
-      return await this.guardrails!.evaluateOutput(
-        request,
-        response,
-        context,
-        attempt,
-      );
-    } catch (error) {
-      if (this.guardrails!.runtimeFailureMode === "closed") {
-        throw new GatewayError(
-          "GUARDRAIL_EVALUATION_FAILED",
-          "The gateway could not evaluate the configured guardrails.",
-          500,
-          { cause: error },
-        );
-      }
-
-      this.logRuntimeFailure("output", context);
-      return { decision: "allow" };
+      this.logRuntimeFailure(phase, context);
+      return failOpenResult;
     }
   }
 
@@ -346,15 +313,8 @@ export class GatewayPipeline {
     };
   }
 
-  private attemptMetadata(attempt: number): LifecycleMetadata {
-    return this.guardrails
-      ? { attempt, maximumAttempts: this.guardrails.maximumAttempts }
-      : {};
-  }
-
   private logDecision(
     phase: "input" | "output",
-    decision: string,
     metadata: Record<string, unknown>,
     context: RequestContext,
   ): void {
@@ -362,7 +322,6 @@ export class GatewayPipeline {
       event: "gateway.guardrail_decision",
       requestId: context.requestId,
       phase,
-      decision,
       policyName: this.guardrails!.identity.name,
       policyVersion: this.guardrails!.identity.version,
       ...metadata,
@@ -391,10 +350,7 @@ export class GatewayPipeline {
   ): GatewayPipelineResult {
     return {
       response,
-      providerRequest: {
-        ...providerRequest,
-        messages: providerRequest.messages.map((message) => ({ ...message })),
-      },
+      providerRequest,
       context,
       durationMs: Math.max(0, Date.now() - context.startedAt),
       lifecycle: lifecycle.events,

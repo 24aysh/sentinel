@@ -1,37 +1,8 @@
-type ChatCompletionResponse = {
-  choices?: Array<{
-    message?: {
-      content?: string;
-    };
-  }>;
-  error?: {
-    code?: string;
-    message?: string;
-  };
-  gateway_debug?: {
-    provider_request?: {
-      model?: string;
-      messages?: Array<{ role?: string; content?: string }>;
-      temperature?: number;
-      max_tokens?: number;
-      stream?: boolean;
-    };
-  };
-};
-
-const gatewayUrl = (process.env.GATEWAY_URL || "http://localhost:3001").replace(
-  /\/+$/,
-  "",
-);
+import { failSmoke, requestGateway } from "./smoke-client.ts";
 
 try {
-  const response = await fetch(`${gatewayUrl}/v1/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-gateway-debug-provider-request": "true",
-    },
-    body: JSON.stringify({
+  const { answer, body } = await requestGateway(
+    {
       messages: [
         {
           role: "user",
@@ -39,23 +10,9 @@ try {
             "hi, can you see my email : ayush@gmail.com, if yes, then output it back",
         },
       ],
-    }),
-  });
-
-  const body = (await response.json()) as ChatCompletionResponse;
-
-  if (!response.ok) {
-    const code = body.error?.code || "UNKNOWN_ERROR";
-    const message =
-      body.error?.message || `Gateway returned HTTP ${response.status}`;
-    throw new Error(`${code}: ${message}`);
-  }
-
-  const answer = body.choices?.[0]?.message?.content;
-  if (!answer) {
-    throw new Error("The gateway returned no assistant response.");
-  }
-
+    },
+    { "x-gateway-debug-provider-request": "true" },
+  );
   const providerRequest = body.gateway_debug?.provider_request;
   if (!providerRequest) {
     throw new Error(
@@ -68,7 +25,5 @@ try {
   console.log("\nAssistant response:");
   console.log(answer);
 } catch (error) {
-  const message = error instanceof Error ? error.message : "Unknown error";
-  console.error(`Gateway request failed: ${message}`);
-  process.exit(1);
+  failSmoke("Gateway request failed", error);
 }

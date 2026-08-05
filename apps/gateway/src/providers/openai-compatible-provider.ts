@@ -1,17 +1,15 @@
-import type {
-  ChatRequest,
-  ChatResponse,
-  ChatResponseChoice,
-  ChatUsage,
+import {
+  toPublicChatRequest,
+  type ChatRequest,
+  type ChatResponse,
 } from "../domain/chat.ts";
 import { GatewayError } from "../domain/errors.ts";
 import type { RequestContext } from "../domain/request-context.ts";
 import type { ModelProvider } from "./model-provider.ts";
 
 export type FetchImplementation = (
-  input: string | URL | Request,
-  init?: RequestInit,
-) => Promise<Response>;
+  ...args: Parameters<typeof fetch>
+) => ReturnType<typeof fetch>;
 
 export interface OpenAICompatibleProviderOptions {
   baseUrl: string;
@@ -34,53 +32,49 @@ function isTimeoutError(error: unknown): boolean {
 }
 
 function safeRetryAfter(value: string | null): string | undefined {
-  if (!value || value.length > 64) {
-    return undefined;
-  }
-
-  return /^[A-Za-z0-9,: -]+$/.test(value) ? value : undefined;
+  return value && value.length <= 64 && /^[A-Za-z0-9,: -]+$/.test(value)
+    ? value
+    : undefined;
 }
 
-function parseChoice(value: unknown): ChatResponseChoice | undefined {
-  if (!isRecord(value) || typeof value.index !== "number") {
-    return undefined;
-  }
+function invalidResponse(
+  message = "The model provider returned an invalid response.",
+): never {
+  throw new GatewayError("INVALID_MODEL_RESPONSE", message, 502);
+}
 
-  const message = value.message;
+function parseChoice(value: unknown): ChatResponse["choices"][number] {
+  const message = isRecord(value) ? value.message : undefined;
   if (
+    !isRecord(value) ||
+    typeof value.index !== "number" ||
     !isRecord(message) ||
     message.role !== "assistant" ||
     typeof message.content !== "string"
   ) {
-    return undefined;
+    invalidResponse();
   }
 
   const finishReason = value.finish_reason;
   if (finishReason !== null && typeof finishReason !== "string") {
-    return undefined;
+    invalidResponse();
   }
 
   return {
     index: value.index,
-    message: {
-      role: "assistant",
-      content: message.content,
-    },
+    message: { role: "assistant", content: message.content },
     finishReason,
   };
 }
 
-function parseUsage(value: unknown): ChatUsage | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
+function parseUsage(value: unknown): NonNullable<ChatResponse["usage"]> {
   if (
+    !isRecord(value) ||
     typeof value.prompt_tokens !== "number" ||
     typeof value.completion_tokens !== "number" ||
     typeof value.total_tokens !== "number"
   ) {
-    return undefined;
+    invalidResponse("The model provider returned invalid usage information.");
   }
 
   return {
@@ -99,39 +93,19 @@ function parseProviderResponse(value: unknown): ChatResponse {
     !Array.isArray(value.choices) ||
     value.choices.length === 0
   ) {
-    throw new GatewayError(
-      "INVALID_MODEL_RESPONSE",
-      "The model provider returned an invalid response.",
-      502,
-    );
+    invalidResponse();
   }
 
   const choices = value.choices.map(parseChoice);
-  if (choices.some((choice) => choice === undefined)) {
-    throw new GatewayError(
-      "INVALID_MODEL_RESPONSE",
-      "The model provider returned an invalid response.",
-      502,
-    );
-  }
-
   const response: ChatResponse = {
     id: value.id,
     created: value.created,
     model: value.model,
-    choices: choices as ChatResponseChoice[],
+    choices,
   };
 
   if (value.usage !== undefined) {
-    const usage = parseUsage(value.usage);
-    if (!usage) {
-      throw new GatewayError(
-        "INVALID_MODEL_RESPONSE",
-        "The model provider returned invalid usage information.",
-        502,
-      );
-    }
-    response.usage = usage;
+    response.usage = parseUsage(value.usage);
   }
 
   return response;
@@ -143,11 +117,16 @@ export class OpenAICompatibleProvider implements ModelProvider {
   private readonly timeoutMs: number;
   private readonly fetchImplementation: FetchImplementation;
 
-  constructor(options: OpenAICompatibleProviderOptions) {
-    this.endpoint = `${options.baseUrl.replace(/\/+$/, "")}/chat/completions`;
-    this.apiKey = options.apiKey;
-    this.timeoutMs = options.timeoutMs;
-    this.fetchImplementation = options.fetch ?? globalThis.fetch;
+  constructor({
+    baseUrl,
+    apiKey,
+    timeoutMs,
+    fetch: fetchImplementation,
+  }: OpenAICompatibleProviderOptions) {
+    this.endpoint = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
+    this.apiKey = apiKey;
+    this.timeoutMs = timeoutMs;
+    this.fetchImplementation = fetchImplementation ?? globalThis.fetch;
   }
 
   async complete(
@@ -159,25 +138,12 @@ export class OpenAICompatibleProvider implements ModelProvider {
       headers.set("authorization", `Bearer ${this.apiKey}`);
     }
 
-    const body: Record<string, unknown> = {
-      model: request.model,
-      messages: request.messages,
-      stream: false,
-    };
-
-    if (request.temperature !== undefined) {
-      body.temperature = request.temperature;
-    }
-    if (request.maxTokens !== undefined) {
-      body.max_tokens = request.maxTokens;
-    }
-
     let response: Response;
     try {
       response = await this.fetchImplementation(this.endpoint, {
         method: "POST",
         headers,
-        body: JSON.stringify(body),
+        body: JSON.stringify(toPublicChatRequest(request)),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {

@@ -12,6 +12,32 @@ interface PublicErrorBody {
   };
 }
 
+interface JsonResponseOptions {
+  status?: number;
+  requestId?: string;
+  durationMs?: number;
+  headers?: Record<string, string>;
+}
+
+export function jsonResponse(
+  body: unknown,
+  { status = 200, requestId, durationMs, headers }: JsonResponseOptions = {},
+): Response {
+  const responseHeaders = new Headers(headers);
+  responseHeaders.set("content-type", "application/json; charset=utf-8");
+  if (requestId) responseHeaders.set("x-request-id", requestId);
+  if (durationMs !== undefined) {
+    responseHeaders.set(
+      "x-gateway-duration-ms",
+      String(Math.max(0, durationMs)),
+    );
+  }
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: responseHeaders,
+  });
+}
+
 export function invalidHttpRequest(message: string): GatewayError {
   return new GatewayError("INVALID_REQUEST", message, 400);
 }
@@ -30,19 +56,12 @@ export function createErrorResponse(
     },
   };
 
-  const headers = new Headers({
-    "content-type": "application/json; charset=utf-8",
-    "x-request-id": requestId,
-  });
-  if (durationMs !== undefined) {
-    headers.set("x-gateway-duration-ms", String(Math.max(0, durationMs)));
-  }
-  if (gatewayError.retryAfter) {
-    headers.set("retry-after", gatewayError.retryAfter);
-  }
-
-  return new Response(JSON.stringify(body), {
+  return jsonResponse(body, {
     status: gatewayError.status,
-    headers,
+    requestId,
+    durationMs,
+    headers: gatewayError.retryAfter
+      ? { "retry-after": gatewayError.retryAfter }
+      : undefined,
   });
 }

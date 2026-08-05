@@ -25,7 +25,6 @@ import {
 
 const MAX_FILE_SIZE = 1024 * 1024;
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
 type UnknownRecord = Record<string, unknown>;
 
 interface ParsedOutputRule {
@@ -34,61 +33,51 @@ interface ParsedOutputRule {
   onFailure: OutputFailureAction;
 }
 
-function policyError(message: string, _cause?: unknown): never {
+function fail(message: string): never {
   throw new ConfigurationError(`GUARDRAIL_POLICY_PATH ${message}`);
 }
 
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function requireRecord(value: unknown, location: string): UnknownRecord {
-  if (!isRecord(value)) {
-    policyError(`must contain an object at ${location}.`);
-  }
-  return value;
-}
-
-function rejectUnknownKeys(
-  record: UnknownRecord,
-  allowed: readonly string[],
-  location: string,
-): void {
-  const unknown = Object.keys(record).find((key) => !allowed.includes(key));
-  if (unknown) {
-    policyError(`contains unknown field ${location}.${unknown}.`);
-  }
-}
-
-function requireString(
+function object(
   value: unknown,
   location: string,
-  options: { maximumLength?: number } = {},
+  allowed?: readonly string[],
+): UnknownRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    fail(`must contain an object at ${location}.`);
+  }
+  if (allowed) {
+    const unknown = Object.keys(value).find((key) => !allowed.includes(key));
+    if (unknown) fail(`contains unknown field ${location}.${unknown}.`);
+  }
+  return value as UnknownRecord;
+}
+
+function text(
+  value: unknown,
+  location: string,
+  maximumLength?: number,
 ): string {
   if (typeof value !== "string" || value.trim().length === 0) {
-    policyError(`must contain a non-empty string at ${location}.`);
+    fail(`must contain a non-empty string at ${location}.`);
   }
-  const normalized = value.trim();
-  if (
-    options.maximumLength !== undefined &&
-    normalized.length > options.maximumLength
-  ) {
-    policyError(
-      `must contain no more than ${options.maximumLength} characters at ${location}.`,
+  const result = value.trim();
+  if (maximumLength !== undefined && result.length > maximumLength) {
+    fail(
+      `must contain no more than ${maximumLength} characters at ${location}.`,
     );
   }
-  return normalized;
+  return result;
 }
 
-function requireName(value: unknown, location: string): string {
-  const name = requireString(value, location);
-  if (!NAME_PATTERN.test(name)) {
-    policyError(`contains an invalid identifier at ${location}.`);
+function name(value: unknown, location: string): string {
+  const result = text(value, location);
+  if (!NAME_PATTERN.test(result)) {
+    fail(`contains an invalid identifier at ${location}.`);
   }
-  return name;
+  return result;
 }
 
-function requireInteger(
+function integer(
   value: unknown,
   location: string,
   minimum: number,
@@ -100,257 +89,204 @@ function requireInteger(
     (maximum !== undefined && (value as number) > maximum)
   ) {
     const range =
-      maximum === undefined
-        ? `at least ${minimum}`
-        : `from ${minimum} through ${maximum}`;
-    policyError(`must contain an integer ${range} at ${location}.`);
+      maximum !== undefined
+        ? `from ${minimum} through ${maximum}`
+        : `at least ${minimum}`;
+    fail(`must contain an integer ${range} at ${location}.`);
   }
   return value as number;
 }
 
-function requireBoolean(value: unknown, location: string): boolean {
-  if (typeof value !== "boolean") {
-    policyError(`must contain a boolean at ${location}.`);
-  }
-  return value;
-}
-
-function requireArray(value: unknown, location: string): unknown[] {
-  if (!Array.isArray(value)) {
-    policyError(`must contain an array at ${location}.`);
-  }
-  return value;
-}
-
-function requireEnum<T extends string>(
+function oneOf<T extends string>(
   value: unknown,
   allowed: readonly T[],
   location: string,
 ): T {
   if (typeof value !== "string" || !allowed.includes(value as T)) {
-    policyError(`contains an unsupported value at ${location}.`);
+    fail(`contains an unsupported value at ${location}.`);
   }
   return value as T;
 }
 
-function requireUniqueEnumArray<T extends string>(
+function array(value: unknown, location: string): unknown[] {
+  if (!Array.isArray(value)) fail(`must contain an array at ${location}.`);
+  return value;
+}
+
+function enumArray<T extends string>(
   value: unknown,
   allowed: readonly T[],
   location: string,
 ): T[] {
-  const values = requireArray(value, location);
-  if (values.length === 0) {
-    policyError(`must contain at least one item at ${location}.`);
-  }
-
-  const normalized = values.map((item, index) =>
-    requireEnum(item, allowed, `${location}[${index}]`),
+  const result = array(value, location).map((item, index) =>
+    oneOf(item, allowed, `${location}[${index}]`),
   );
-  if (new Set(normalized).size !== normalized.length) {
-    policyError(`must not contain duplicate values at ${location}.`);
+  if (result.length === 0) {
+    fail(`must contain at least one item at ${location}.`);
   }
-  return normalized;
+  if (new Set(result).size !== result.length) {
+    fail(`must not contain duplicate values at ${location}.`);
+  }
+  return result;
+}
+
+function optional<T>(
+  value: unknown,
+  fallback: T,
+  parse: (value: unknown) => T,
+): T {
+  return value === undefined ? fallback : parse(value);
 }
 
 function parseDefaults(value: unknown): PolicyDefaults {
-  if (value === undefined) {
-    return {
-      inputAction: "allow",
-      runtimeFailureMode: "closed",
-      maximumRetries: 1,
-    };
-  }
-
-  const defaults = requireRecord(value, "defaults");
-  rejectUnknownKeys(
-    defaults,
-    ["input_action", "runtime_failure_mode", "maximum_retries"],
-    "defaults",
-  );
-
+  const defaults =
+    value === undefined
+      ? {}
+      : object(value, "defaults", [
+          "input_action",
+          "runtime_failure_mode",
+          "maximum_retries",
+        ]);
   return {
-    inputAction:
-      defaults.input_action === undefined
-        ? "allow"
-        : requireEnum<InputActionType>(
-            defaults.input_action,
-            ["allow", "redact", "block"],
-            "defaults.input_action",
-          ),
-    runtimeFailureMode:
-      defaults.runtime_failure_mode === undefined
-        ? "closed"
-        : requireEnum<RuntimeFailureMode>(
-            defaults.runtime_failure_mode,
-            ["open", "closed"],
-            "defaults.runtime_failure_mode",
-          ),
-    maximumRetries:
-      defaults.maximum_retries === undefined
-        ? 1
-        : requireInteger(
-            defaults.maximum_retries,
-            "defaults.maximum_retries",
-            0,
-            3,
-          ),
+    inputAction: optional<InputActionType>(
+      defaults.input_action,
+      "allow",
+      (item) =>
+        oneOf(item, ["allow", "redact", "block"], "defaults.input_action"),
+    ),
+    runtimeFailureMode: optional<RuntimeFailureMode>(
+      defaults.runtime_failure_mode,
+      "closed",
+      (item) =>
+        oneOf(item, ["open", "closed"], "defaults.runtime_failure_mode"),
+    ),
+    maximumRetries: optional(defaults.maximum_retries, 1, (item) =>
+      integer(item, "defaults.maximum_retries", 0, 3),
+    ),
   };
 }
 
 function parseInputAction(value: unknown, location: string): InputPolicyAction {
-  const action = requireRecord(value, location);
-  rejectUnknownKeys(action, ["type", "replacement"], location);
-  const type = requireEnum<InputActionType>(
+  const action = object(value, location, ["type", "replacement"]);
+  const type = oneOf<InputActionType>(
     action.type,
     ["allow", "redact", "block"],
     `${location}.type`,
   );
-
-  if (type !== "redact" && action.replacement !== undefined) {
-    policyError(`allows replacement only for redact at ${location}.`);
+  if (action.replacement !== undefined && type !== "redact") {
+    fail(`allows replacement only for redact at ${location}.`);
   }
-
-  if (type === "redact" && action.replacement !== undefined) {
-    return {
-      type,
-      replacement: requireString(
-        action.replacement,
-        `${location}.replacement`,
-        {
-          maximumLength: 256,
-        },
-      ),
-    };
-  }
-
-  return { type };
+  return type === "redact" && action.replacement !== undefined
+    ? {
+        type,
+        replacement: text(action.replacement, `${location}.replacement`, 256),
+      }
+    : { type };
 }
 
 function parseInputRules(value: unknown): InputPolicyRule[] {
-  if (value === undefined) {
-    return [];
-  }
-
-  return requireArray(value, "input").map((item, index) => {
+  if (value === undefined) return [];
+  return array(value, "input").map((item, index) => {
     const location = `input[${index}]`;
-    const rule = requireRecord(item, location);
-    rejectUnknownKeys(
-      rule,
-      ["id", "description", "detector", "entities", "roles", "action"],
-      location,
-    );
-
+    const rule = object(item, location, [
+      "id",
+      "description",
+      "detector",
+      "entities",
+      "roles",
+      "action",
+    ]);
     if (rule.detector !== "pii") {
-      policyError(`must use detector pii at ${location}.detector.`);
+      fail(`must use detector pii at ${location}.detector.`);
+    }
+    if (rule.description !== undefined) {
+      text(rule.description, `${location}.description`, 2_000);
     }
 
-    const parsed: InputPolicyRule = {
-      id: requireName(rule.id, `${location}.id`),
-      entities: requireUniqueEnumArray<PiiEntity>(
+    const result: InputPolicyRule = {
+      id: name(rule.id, `${location}.id`),
+      entities: enumArray<PiiEntity>(
         rule.entities,
         PII_ENTITIES,
         `${location}.entities`,
       ),
       action: parseInputAction(rule.action, `${location}.action`),
     };
-
-    if (rule.description !== undefined) {
-      parsed.description = requireString(
-        rule.description,
-        `${location}.description`,
-        { maximumLength: 2_000 },
-      );
-    }
     if (rule.roles !== undefined) {
-      parsed.roles = requireUniqueEnumArray<ChatRole>(
+      result.roles = enumArray<ChatRole>(
         rule.roles,
         CHAT_ROLES,
         `${location}.roles`,
       );
     }
-
-    return parsed;
+    return result;
   });
 }
 
-function parseOutputFailureAction(
+function parseOutputAction(
   value: unknown,
   defaults: PolicyDefaults,
   location: string,
 ): OutputFailureAction {
-  const action = requireRecord(value, location);
-  rejectUnknownKeys(
-    action,
-    ["type", "maximum_retries", "repair_prompt"],
-    location,
-  );
-  const type = requireEnum(action.type, ["retry", "block"], `${location}.type`);
-
+  const action = object(value, location, [
+    "type",
+    "maximum_retries",
+    "repair_prompt",
+  ]);
+  const type = oneOf(action.type, ["retry", "block"], `${location}.type`);
   if (type === "block") {
     if (
       action.maximum_retries !== undefined ||
       action.repair_prompt !== undefined
     ) {
-      policyError(
+      fail(
         `allows maximum_retries and repair_prompt only for retry at ${location}.`,
       );
     }
     return { type };
   }
 
-  const parsed: OutputFailureAction = {
+  const result: OutputFailureAction = {
     type,
-    maximumRetries:
-      action.maximum_retries === undefined
-        ? defaults.maximumRetries
-        : requireInteger(
-            action.maximum_retries,
-            `${location}.maximum_retries`,
-            0,
-            3,
-          ),
+    maximumRetries: optional(
+      action.maximum_retries,
+      defaults.maximumRetries,
+      (item) => integer(item, `${location}.maximum_retries`, 0, 3),
+    ),
   };
   if (action.repair_prompt !== undefined) {
-    parsed.repairPrompt = requireString(
+    result.repairPrompt = text(
       action.repair_prompt,
       `${location}.repair_prompt`,
-      { maximumLength: 2_000 },
+      2_000,
     );
   }
-  return parsed;
+  return result;
 }
 
 function parseOutputRule(
   value: unknown,
   defaults: PolicyDefaults,
 ): ParsedOutputRule | undefined {
-  if (value === undefined) {
-    return undefined;
-  }
-
-  const rules = requireArray(value, "output");
-  if (rules.length > 1) {
-    policyError("supports at most one output rule.");
-  }
-  if (rules.length === 0) {
-    return undefined;
-  }
+  if (value === undefined) return undefined;
+  const rules = array(value, "output");
+  if (rules.length > 1) fail("supports at most one output rule.");
+  if (rules.length === 0) return undefined;
 
   const location = "output[0]";
-  const rule = requireRecord(rules[0], location);
-  rejectUnknownKeys(
-    rule,
-    ["id", "validator", "schema_ref", "on_failure"],
-    location,
-  );
+  const rule = object(rules[0], location, [
+    "id",
+    "validator",
+    "schema_ref",
+    "on_failure",
+  ]);
   if (rule.validator !== "json_schema") {
-    policyError(`must use validator json_schema at ${location}.validator.`);
+    fail(`must use validator json_schema at ${location}.validator.`);
   }
-
   return {
-    id: requireName(rule.id, `${location}.id`),
-    schemaRef: requireString(rule.schema_ref, `${location}.schema_ref`),
-    onFailure: parseOutputFailureAction(
+    id: name(rule.id, `${location}.id`),
+    schemaRef: text(rule.schema_ref, `${location}.schema_ref`),
+    onFailure: parseOutputAction(
       rule.on_failure,
       defaults,
       `${location}.on_failure`,
@@ -358,86 +294,65 @@ function parseOutputRule(
   };
 }
 
-async function readBoundedFile(path: string, label: string): Promise<string> {
-  let details;
-  try {
-    details = await stat(path);
-  } catch (error) {
-    policyError(`could not read the configured ${label}.`, error);
-  }
-  if (!details.isFile()) {
-    policyError(`must reference a regular ${label}.`);
-  }
+async function readFile(path: string, label: string): Promise<string> {
+  const details = await stat(path).catch(() =>
+    fail(`could not read the configured ${label}.`),
+  );
+  if (!details.isFile()) fail(`must reference a regular ${label}.`);
   if (details.size > MAX_FILE_SIZE) {
-    policyError(`configured ${label} exceeds the 1 MiB limit.`);
+    fail(`configured ${label} exceeds the 1 MiB limit.`);
   }
-
-  try {
-    return await Bun.file(path).text();
-  } catch (error) {
-    policyError(`could not read the configured ${label}.`, error);
-  }
+  return Bun.file(path)
+    .text()
+    .catch(() => fail(`could not read the configured ${label}.`));
 }
 
-function containsExternalReference(value: unknown): boolean {
-  if (Array.isArray(value)) {
-    return value.some(containsExternalReference);
-  }
-  if (!isRecord(value)) {
-    return false;
-  }
+function hasExternalReference(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasExternalReference);
+  if (typeof value !== "object" || value === null) return false;
 
-  for (const referenceKeyword of ["$ref", "$dynamicRef"] as const) {
+  const record = value as UnknownRecord;
+  for (const keyword of ["$ref", "$dynamicRef"] as const) {
     if (
-      referenceKeyword in value &&
-      (typeof value[referenceKeyword] !== "string" ||
-        !value[referenceKeyword].startsWith("#"))
+      keyword in record &&
+      (typeof record[keyword] !== "string" || !record[keyword].startsWith("#"))
     ) {
       return true;
     }
   }
-  return Object.values(value).some(containsExternalReference);
+  return Object.values(record).some(hasExternalReference);
 }
 
-async function loadSchema(
-  policyDirectory: string,
-  schemaRef: string,
-): Promise<{ schema: unknown; validator: CompiledJsonSchemaValidator }> {
+async function loadSchema(policyDirectory: string, schemaRef: string) {
   if (isAbsolute(schemaRef) || extname(schemaRef).toLowerCase() !== ".json") {
-    policyError("requires schema_ref to be a relative JSON file.");
+    fail("requires schema_ref to be a relative JSON file.");
   }
-
-  let schemaPath: string;
-  try {
-    schemaPath = await realpath(resolve(policyDirectory, schemaRef));
-  } catch (error) {
-    policyError("could not read the configured schema.", error);
-  }
-
+  const schemaPath = await realpath(resolve(policyDirectory, schemaRef)).catch(
+    () => fail("could not read the configured schema."),
+  );
   const relativePath = relative(policyDirectory, schemaPath);
   if (
     relativePath === ".." ||
     relativePath.startsWith(`..${sep}`) ||
     isAbsolute(relativePath)
   ) {
-    policyError("requires schema_ref to remain inside the policy directory.");
+    fail("requires schema_ref to remain inside the policy directory.");
   }
 
-  const source = await readBoundedFile(schemaPath, "schema file");
+  const source = await readFile(schemaPath, "schema file");
   let schema: unknown;
   try {
     schema = JSON.parse(source);
-  } catch (error) {
-    policyError("contains invalid JSON in the configured schema.", error);
+  } catch {
+    fail("contains invalid JSON in the configured schema.");
   }
-  if (containsExternalReference(schema)) {
-    policyError("does not support remote or cross-file schema references.");
+  if (hasExternalReference(schema)) {
+    fail("does not support remote or cross-file schema references.");
   }
-
   try {
     return { schema, validator: new CompiledJsonSchemaValidator(schema) };
-  } catch (error) {
-    policyError("contains a schema that could not be compiled.", error);
+  } catch {
+    fail("contains a schema that could not be compiled.");
   }
 }
 
@@ -445,86 +360,66 @@ export async function loadGuardrailPolicy(
   configuredPath: string,
   workingDirectory = process.cwd(),
 ): Promise<LoadedGuardrailPolicy> {
-  let policyPath: string;
-  try {
-    policyPath = await realpath(resolve(workingDirectory, configuredPath));
-  } catch (error) {
-    policyError("could not read the configured policy file.", error);
-  }
-
-  const source = await readBoundedFile(policyPath, "policy file");
-  const document = parseDocument(source, {
+  const policyPath = await realpath(
+    resolve(workingDirectory, configuredPath),
+  ).catch(() => fail("could not read the configured policy file."));
+  const document = parseDocument(await readFile(policyPath, "policy file"), {
     strict: true,
     uniqueKeys: true,
   });
-  if (document.errors.length > 0) {
-    policyError("contains invalid YAML.");
-  }
+  if (document.errors.length) fail("contains invalid YAML.");
 
   let rawPolicy: unknown;
   try {
     rawPolicy = document.toJS({ maxAliasCount: 0 });
-  } catch (error) {
-    policyError("contains unsupported YAML aliases.", error);
+  } catch {
+    fail("contains unsupported YAML aliases.");
   }
 
-  const policy = requireRecord(rawPolicy, "policy");
-  rejectUnknownKeys(
-    policy,
-    [
-      "apiVersion",
-      "kind",
-      "enabled",
-      "metadata",
-      "defaults",
-      "input",
-      "output",
-    ],
-    "policy",
-  );
+  const policy = object(rawPolicy, "policy", [
+    "apiVersion",
+    "kind",
+    "enabled",
+    "metadata",
+    "defaults",
+    "input",
+    "output",
+  ]);
   if (policy.apiVersion !== "guardrails/v1") {
-    policyError("must use apiVersion guardrails/v1.");
+    fail("must use apiVersion guardrails/v1.");
   }
   if (policy.kind !== "GuardrailPolicy") {
-    policyError("must use kind GuardrailPolicy.");
+    fail("must use kind GuardrailPolicy.");
   }
 
-  const metadata = requireRecord(policy.metadata, "metadata");
-  rejectUnknownKeys(metadata, ["name", "version"], "metadata");
-  const identity = {
-    name: requireName(metadata.name, "metadata.name"),
-    version: requireInteger(metadata.version, "metadata.version", 1),
-  };
+  const metadata = object(policy.metadata, "metadata", ["name", "version"]);
   const defaults = parseDefaults(policy.defaults);
   const input = parseInputRules(policy.input);
-  const parsedOutput = parseOutputRule(policy.output, defaults);
-
-  const ids = [...input.map((rule) => rule.id)];
-  if (parsedOutput) {
-    ids.push(parsedOutput.id);
-  }
+  const output = parseOutputRule(policy.output, defaults);
+  const ids = [...input.map(({ id }) => id), ...(output ? [output.id] : [])];
   if (new Set(ids).size !== ids.length) {
-    policyError("requires globally unique rule IDs.");
+    fail("requires globally unique rule IDs.");
   }
 
   const loaded: LoadedGuardrailPolicy = {
-    sourcePath: policyPath,
     enabled:
       policy.enabled === undefined
         ? true
-        : requireBoolean(policy.enabled, "enabled"),
-    identity,
+        : typeof policy.enabled === "boolean"
+          ? policy.enabled
+          : fail("must contain a boolean at enabled."),
+    identity: {
+      name: name(metadata.name, "metadata.name"),
+      version: integer(metadata.version, "metadata.version", 1),
+    },
     defaults,
     input,
   };
-  if (parsedOutput) {
-    const compiled = await loadSchema(
-      dirname(policyPath),
-      parsedOutput.schemaRef,
-    );
+  if (output) {
     loaded.output = {
-      ...parsedOutput,
-      ...compiled,
+      id: output.id,
+      onFailure: output.onFailure,
+      ...(await loadSchema(dirname(policyPath), output.schemaRef)),
     };
   }
   return loaded;

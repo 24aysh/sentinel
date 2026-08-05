@@ -7,69 +7,55 @@ export interface ChatMessage {
   content: string;
 }
 
-export interface ChatInput {
-  model?: string;
+interface ChatParameters {
   messages: ChatMessage[];
   temperature?: number;
   maxTokens?: number;
+}
+
+export interface ChatInput extends ChatParameters {
+  model?: string;
   stream?: boolean;
 }
 
-export interface ChatRequest {
+export interface ChatRequest extends ChatParameters {
   model: string;
-  messages: ChatMessage[];
-  temperature?: number;
-  maxTokens?: number;
-}
-
-export interface ChatResponseMessage {
-  role: "assistant";
-  content: string;
-}
-
-export interface ChatResponseChoice {
-  index: number;
-  message: ChatResponseMessage;
-  finishReason: string | null;
-}
-
-export interface ChatUsage {
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
 }
 
 export interface ChatResponse {
   id: string;
   created: number;
   model: string;
-  choices: ChatResponseChoice[];
-  usage?: ChatUsage;
-}
-
-export interface PublicChatCompletionResponse {
-  id: string;
-  object: "chat.completion";
-  created: number;
-  model: string;
   choices: Array<{
     index: number;
-    message: ChatResponseMessage;
-    finish_reason: string | null;
+    message: { role: "assistant"; content: string };
+    finishReason: string | null;
   }>;
   usage?: {
-    prompt_tokens: number;
-    completion_tokens: number;
-    total_tokens: number;
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
   };
 }
 
-export function toPublicChatResponse(
-  response: ChatResponse,
-): PublicChatCompletionResponse {
-  const publicResponse: PublicChatCompletionResponse = {
+export function toPublicChatRequest(request: ChatRequest) {
+  return {
+    model: request.model,
+    messages: request.messages,
+    stream: false,
+    ...(request.temperature !== undefined && {
+      temperature: request.temperature,
+    }),
+    ...(request.maxTokens !== undefined && {
+      max_tokens: request.maxTokens,
+    }),
+  };
+}
+
+export function toPublicChatResponse(response: ChatResponse) {
+  const publicResponse = {
     id: response.id,
-    object: "chat.completion",
+    object: "chat.completion" as const,
     created: response.created,
     model: response.model,
     choices: response.choices.map((choice) => ({
@@ -77,15 +63,13 @@ export function toPublicChatResponse(
       message: choice.message,
       finish_reason: choice.finishReason,
     })),
+    ...(response.usage && {
+      usage: {
+        prompt_tokens: response.usage.promptTokens,
+        completion_tokens: response.usage.completionTokens,
+        total_tokens: response.usage.totalTokens,
+      },
+    }),
   };
-
-  if (response.usage) {
-    publicResponse.usage = {
-      prompt_tokens: response.usage.promptTokens,
-      completion_tokens: response.usage.completionTokens,
-      total_tokens: response.usage.totalTokens,
-    };
-  }
-
   return publicResponse;
 }

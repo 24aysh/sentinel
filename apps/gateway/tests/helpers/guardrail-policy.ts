@@ -21,7 +21,6 @@ export function createTestPolicy(
   options: PolicyOptions = {},
 ): LoadedGuardrailPolicy {
   const policy: LoadedGuardrailPolicy = {
-    sourcePath: "/test/policy.yaml",
     enabled: true,
     identity: { name: "test-policy", version: 1 },
     defaults: {
@@ -35,7 +34,6 @@ export function createTestPolicy(
   if (options.output) {
     policy.output = {
       id: "test-output",
-      schemaRef: "schema.json",
       schema: options.output.schema,
       validator: new CompiledJsonSchemaValidator(options.output.schema),
       onFailure: options.output.onFailure,

@@ -44,5 +44,5 @@ export async function createRuntime(
     exposeProviderRequest: config.debugExposeProviderRequest,
   });
 
-  return { app, config, guardrails, logger, pipeline, policy, provider };
+  return { app, config, guardrails, logger, policy };
 }

@@ -1,12 +1,9 @@
 import { t } from "elysia";
+import { CHAT_ROLES } from "../../domain/chat.ts";
 
 const chatMessageSchema = t.Object(
   {
-    role: t.Union([
-      t.Literal("system"),
-      t.Literal("user"),
-      t.Literal("assistant"),
-    ]),
+    role: t.Union(CHAT_ROLES.map((role) => t.Literal(role))),
     content: t.String({ minLength: 1 }),
   },
   { additionalProperties: false },
