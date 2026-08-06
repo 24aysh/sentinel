@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "../src/app.ts";
 import { ConfiguredGuardrailHub } from "../src/guardrails/guardrail-hub.ts";
+import { ModelGateway } from "../src/model-gateway.ts";
 import { silentLogger } from "../src/observability/logger.ts";
-import { GatewayPipeline } from "../src/pipeline/gateway-pipeline.ts";
 import { FakeProvider } from "./helpers/fake-provider.ts";
 import { createTestPolicy } from "./helpers/guardrail-policy.ts";
 
@@ -19,7 +19,7 @@ function request(headers: Record<string, string> = {}): Request {
 describe("guardrail HTTP errors", () => {
   test("returns the sanitized input block contract", async () => {
     const provider = new FakeProvider();
-    const pipeline = new GatewayPipeline({
+    const gateway = new ModelGateway({
       provider,
       defaultModel: "test-model",
       guardrails: new ConfiguredGuardrailHub(
@@ -35,7 +35,7 @@ describe("guardrail HTTP errors", () => {
       ),
       logger: silentLogger,
     });
-    const app = createApp({ pipeline, logger: silentLogger });
+    const app = createApp({ gateway, logger: silentLogger });
 
     const response = await app.handle(request());
     const body = await response.json();
@@ -54,7 +54,7 @@ describe("guardrail HTTP errors", () => {
 
   test("returns the sanitized invalid-output contract", async () => {
     const provider = new FakeProvider();
-    const pipeline = new GatewayPipeline({
+    const gateway = new ModelGateway({
       provider,
       defaultModel: "test-model",
       guardrails: new ConfiguredGuardrailHub(
@@ -67,7 +67,7 @@ describe("guardrail HTTP errors", () => {
       ),
       logger: silentLogger,
     });
-    const app = createApp({ pipeline, logger: silentLogger });
+    const app = createApp({ gateway, logger: silentLogger });
 
     const response = await app.handle(request());
 
@@ -83,7 +83,7 @@ describe("guardrail HTTP errors", () => {
 
   test("exposes the redacted provider request only for explicit debug requests", async () => {
     const provider = new FakeProvider();
-    const pipeline = new GatewayPipeline({
+    const gateway = new ModelGateway({
       provider,
       defaultModel: "test-model",
       guardrails: new ConfiguredGuardrailHub(
@@ -100,7 +100,7 @@ describe("guardrail HTTP errors", () => {
       logger: silentLogger,
     });
     const app = createApp({
-      pipeline,
+      gateway,
       logger: silentLogger,
       exposeProviderRequest: true,
     });

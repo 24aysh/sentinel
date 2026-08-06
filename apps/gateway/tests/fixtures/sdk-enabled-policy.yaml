@@ -1,0 +1,15 @@
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+enabled: true
+metadata:
+  name: sdk-test-policy
+  version: 1
+defaults:
+  runtime_failure_mode: closed
+input:
+  - id: redact-email
+    detector: pii
+    entities: [EMAIL]
+    roles: [user]
+    action:
+      type: redact

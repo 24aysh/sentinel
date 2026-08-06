@@ -6,7 +6,7 @@ import {
   resolve,
   sep,
 } from "node:path";
-import { realpath, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import { parseDocument } from "yaml";
 import { ConfigurationError } from "../../config/env.ts";
 import { CHAT_ROLES, type ChatRole } from "../../domain/chat.ts";
@@ -294,7 +294,7 @@ function parseOutputRule(
   };
 }
 
-async function readFile(path: string, label: string): Promise<string> {
+async function readTextFile(path: string, label: string): Promise<string> {
   const details = await stat(path).catch(() =>
     fail(`could not read the configured ${label}.`),
   );
@@ -302,9 +302,9 @@ async function readFile(path: string, label: string): Promise<string> {
   if (details.size > MAX_FILE_SIZE) {
     fail(`configured ${label} exceeds the 1 MiB limit.`);
   }
-  return Bun.file(path)
-    .text()
-    .catch(() => fail(`could not read the configured ${label}.`));
+  return readFile(path, "utf8").catch(() =>
+    fail(`could not read the configured ${label}.`),
+  );
 }
 
 function hasExternalReference(value: unknown): boolean {
@@ -339,7 +339,7 @@ async function loadSchema(policyDirectory: string, schemaRef: string) {
     fail("requires schema_ref to remain inside the policy directory.");
   }
 
-  const source = await readFile(schemaPath, "schema file");
+  const source = await readTextFile(schemaPath, "schema file");
   let schema: unknown;
   try {
     schema = JSON.parse(source);
@@ -363,10 +363,13 @@ export async function loadGuardrailPolicy(
   const policyPath = await realpath(
     resolve(workingDirectory, configuredPath),
   ).catch(() => fail("could not read the configured policy file."));
-  const document = parseDocument(await readFile(policyPath, "policy file"), {
-    strict: true,
-    uniqueKeys: true,
-  });
+  const document = parseDocument(
+    await readTextFile(policyPath, "policy file"),
+    {
+      strict: true,
+      uniqueKeys: true,
+    },
+  );
   if (document.errors.length) fail("contains invalid YAML.");
 
   let rawPolicy: unknown;

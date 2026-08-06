@@ -1,9 +1,16 @@
 import { Elysia } from "elysia";
-import { toPublicChatRequest, toPublicChatResponse } from "./domain/chat.ts";
+import {
+  toPublicChatRequest,
+  toPublicChatResponse,
+  type ChatInput,
+} from "./domain/chat.ts";
 import { GatewayError } from "./domain/errors.ts";
 import { resolveRequestId } from "./domain/request-context.ts";
 import type { Logger } from "./observability/logger.ts";
-import type { GatewayPipeline } from "./pipeline/gateway-pipeline.ts";
+import type {
+  ChatCompletionRequestOptions,
+  GatewayExecutionResult,
+} from "./pipeline/gateway-pipeline.ts";
 import {
   createErrorResponse,
   invalidHttpRequest,
@@ -11,15 +18,26 @@ import {
 } from "./transport/http/error-response.ts";
 import { chatCompletionBodySchema } from "./transport/http/schemas.ts";
 
-interface AppDependencies {
-  pipeline: GatewayPipeline;
+export interface GatewayExecutor {
+  chat: {
+    completions: {
+      create(
+        input: ChatInput,
+        options?: ChatCompletionRequestOptions,
+      ): Promise<GatewayExecutionResult>;
+    };
+  };
+}
+
+export interface AppDependencies {
+  gateway: GatewayExecutor;
   logger: Logger;
   exposeProviderRequest?: boolean;
   version?: string;
 }
 
 export function createApp({
-  pipeline,
+  gateway,
   logger,
   exposeProviderRequest = false,
   version = "0.1.0",
@@ -62,7 +80,7 @@ export function createApp({
         const requestId = resolveRequestId(request.headers.get("x-request-id"));
 
         try {
-          const result = await pipeline.execute(
+          const result = await gateway.chat.completions.create(
             {
               model: body.model,
               messages: body.messages.map((message) => ({

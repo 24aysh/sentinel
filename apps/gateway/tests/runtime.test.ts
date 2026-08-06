@@ -21,6 +21,7 @@ describe("createRuntime", () => {
   test("preserves an unconfigured guardrail boundary", async () => {
     const runtime = await createRuntime(config(), silentLogger);
 
+    expect(runtime.gateway.chat.completions.create).toBeFunction();
     expect(runtime.guardrails).toBeUndefined();
     expect(runtime.policy).toBeUndefined();
   });

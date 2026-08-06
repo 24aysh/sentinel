@@ -33,8 +33,8 @@
       },
     },
     "apps/gateway": {
-      "name": "gateway",
-      "version": "0.1.0",
+      "name": "@llm-gateway/sdk",
+      "version": "0.2.0",
       "dependencies": {
         "ajv": "^8.20.0",
         "ajv-formats": "^3.0.1",
@@ -43,9 +43,6 @@
       },
       "devDependencies": {
         "@types/bun": "latest",
-      },
-      "peerDependencies": {
-        "typescript": "^5",
       },
     },
     "packages/eslint-config": {
@@ -159,6 +156,8 @@
     "@jridgewell/sourcemap-codec": ["@jridgewell/sourcemap-codec@1.5.5", "", {}, "sha512-cYQ9310grqxueWbl+WuIUIaiUaDcj7WOq5fVhEljNVgRfOUhY9fy2zTvfoqWsnebh8Sl70VScFbICvJnLKB0Og=="],
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
+
+    "@llm-gateway/sdk": ["@llm-gateway/sdk@workspace:apps/gateway"],
 
     "@next/eslint-plugin-next": ["@next/eslint-plugin-next@16.3.0", "", { "dependencies": { "@eslint-community/eslint-utils": "4.9.1", "fast-glob": "3.3.1" } }, "sha512-OqgJ8PN0d04KcPhDX/PTY5tJUJZxlbrt7O7FBsm4XE0XW2JDrKnDXsc9uo9WUimJGPoo2j+JRGhyXApC//mvbw=="],
 
@@ -445,8 +444,6 @@
     "function.prototype.name": ["function.prototype.name@1.2.0", "", { "dependencies": { "call-bind": "^1.0.9", "call-bound": "^1.0.4", "es-define-property": "^1.0.1", "es-errors": "^1.3.0", "functions-have-names": "^1.2.3", "has-property-descriptors": "^1.0.2", "hasown": "^2.0.4", "is-callable": "^1.2.7", "is-document.all": "^1.0.0" } }, "sha512-jObKIik1P2QjPHP5nz5BaOtUlfgS0fWo8IUByNXkM+o+02sJOi94em77GwJKQSJ3gfPHdgzLNrHc1uokV4P/ew=="],
 
     "functions-have-names": ["functions-have-names@1.2.3", "", {}, "sha512-xckBUXyTIqT97tq2x2AMb+g163b5JFysYk0x4qxNFwbfQkmNZoiRHb6sPzI9/QV33WeuvVYBUIiD4NzNIyqaRQ=="],
-
-    "gateway": ["gateway@workspace:apps/gateway"],
 
     "generator-function": ["generator-function@2.0.1", "", {}, "sha512-SFdFmIJi+ybC0vjlHN0ZGVGHc3lgE0DxPAT0djjVg+kjOnSqclqmj0KQ7ykTOLP6YxoqOvuAODGdcHJn+43q3g=="],
 

@@ -20,7 +20,7 @@ import {
   type LifecycleMetadata,
 } from "./lifecycle.ts";
 
-interface GatewayPipelineOptions {
+export interface GatewayPipelineOptions {
   provider: ModelProvider;
   defaultModel: string;
   guardrails?: GuardrailHub;
@@ -28,11 +28,11 @@ interface GatewayPipelineOptions {
   lifecycleListener?: LifecycleListener;
 }
 
-interface PipelineExecutionOptions {
+export interface ChatCompletionRequestOptions {
   requestId?: string;
 }
 
-interface GatewayPipelineResult {
+export interface GatewayExecutionResult {
   response: ChatResponse;
   providerRequest: ChatRequest;
   context: RequestContext;
@@ -149,8 +149,8 @@ export class GatewayPipeline {
 
   async execute(
     input: ChatInput,
-    options: PipelineExecutionOptions = {},
-  ): Promise<GatewayPipelineResult> {
+    options: ChatCompletionRequestOptions = {},
+  ): Promise<GatewayExecutionResult> {
     const requestId = resolveRequestId(options.requestId);
     const initialModel = input.model?.trim() || this.defaultModel;
     const context = createRequestContext(requestId, initialModel);
@@ -347,7 +347,7 @@ export class GatewayPipeline {
     providerRequest: ChatRequest,
     context: RequestContext,
     lifecycle: LifecycleTracker,
-  ): GatewayPipelineResult {
+  ): GatewayExecutionResult {
     return {
       response,
       providerRequest,

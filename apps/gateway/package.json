@@ -1,9 +1,25 @@
 {
-  "name": "gateway",
-  "version": "0.1.0",
-  "module": "index.ts",
+  "name": "@llm-gateway/sdk",
+  "version": "0.2.0",
   "type": "module",
   "private": true,
+  "sideEffects": false,
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "dev": "bun --watch index.ts",
     "start": "bun index.ts",
@@ -12,14 +28,13 @@
     "test:guardrails": "bun scripts/test-guardrails.ts",
     "smoke": "bun scripts/smoke.ts",
     "smoke:guardrails": "bun scripts/smoke-guardrails.ts",
-    "check-types": "bunx tsc --noEmit",
-    "build": "bun build index.ts --outdir dist --target bun"
+    "smoke:sdk": "bun scripts/smoke-sdk.ts",
+    "check-types": "bun x tsc --noEmit",
+    "build": "bun x tsc --project tsconfig.build.json",
+    "check:package": "bun run build && bun scripts/check-package.ts"
   },
   "devDependencies": {
     "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
   },
   "dependencies": {
     "ajv": "^8.20.0",

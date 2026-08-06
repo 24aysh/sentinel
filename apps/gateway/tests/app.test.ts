@@ -1,18 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { createApp } from "../src/app.ts";
 import { GatewayError } from "../src/domain/errors.ts";
+import { ModelGateway } from "../src/model-gateway.ts";
 import { silentLogger } from "../src/observability/logger.ts";
-import { GatewayPipeline } from "../src/pipeline/gateway-pipeline.ts";
 import { FakeProvider } from "./helpers/fake-provider.ts";
 
 function setup(failure?: unknown) {
   const provider = new FakeProvider(undefined, failure);
-  const pipeline = new GatewayPipeline({
+  const gateway = new ModelGateway({
     provider,
     defaultModel: "default-model",
     logger: silentLogger,
   });
-  const app = createApp({ pipeline, logger: silentLogger });
+  const app = createApp({ gateway, logger: silentLogger });
   return { app, provider };
 }
 
