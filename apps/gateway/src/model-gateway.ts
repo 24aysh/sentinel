@@ -1,11 +1,8 @@
-import { ConfigurationError } from "./config/env.ts";
 import type { ChatInput } from "./domain/chat.ts";
+import { ConfigurationError } from "./domain/errors.ts";
 import { loadGuardrailPolicy } from "./guardrails/config/policy-loader.ts";
 import { ConfiguredGuardrailHub } from "./guardrails/guardrail-hub.ts";
-import type {
-  GuardrailHub,
-  LoadedGuardrailPolicy,
-} from "./guardrails/types.ts";
+import type { GuardrailHub } from "./guardrails/types.ts";
 import { silentLogger, type Logger } from "./observability/logger.ts";
 import {
   GatewayPipeline,
@@ -30,12 +27,6 @@ export interface ModelGatewayCreateOptions {
   policyWorkingDirectory?: string;
   logger?: Logger;
   lifecycleListener?: LifecycleListener;
-}
-
-interface ModelGatewayComposition {
-  gateway: ModelGateway;
-  guardrails?: GuardrailHub;
-  policy?: LoadedGuardrailPolicy;
 }
 
 export class ChatCompletionsResource {
@@ -83,49 +74,38 @@ export class ModelGateway {
     );
   }
 
-  static async create(
-    options: ModelGatewayCreateOptions,
-  ): Promise<ModelGateway> {
-    return (await composeModelGateway(options)).gateway;
-  }
-}
+  static async create({
+    provider,
+    defaultModel,
+    policyPath,
+    policyWorkingDirectory,
+    logger = silentLogger,
+    lifecycleListener,
+  }: ModelGatewayCreateOptions): Promise<ModelGateway> {
+    const policy = policyPath
+      ? await loadGuardrailPolicy(policyPath, policyWorkingDirectory)
+      : undefined;
+    const guardrails = policy?.enabled
+      ? new ConfiguredGuardrailHub(policy)
+      : undefined;
 
-/** Internal server composition helper. Not exported from the SDK entry point. */
-export async function composeModelGateway({
-  provider,
-  defaultModel,
-  policyPath,
-  policyWorkingDirectory,
-  logger = silentLogger,
-  lifecycleListener,
-}: ModelGatewayCreateOptions): Promise<ModelGatewayComposition> {
-  const policy = policyPath
-    ? await loadGuardrailPolicy(policyPath, policyWorkingDirectory)
-    : undefined;
-  const guardrails = policy?.enabled
-    ? new ConfiguredGuardrailHub(policy)
-    : undefined;
+    if (policy) {
+      logger.info({
+        event: "gateway.guardrail_policy_loaded",
+        policyName: policy.identity.name,
+        policyVersion: policy.identity.version,
+        enabled: policy.enabled,
+        inputRuleCount: policy.input.length,
+        outputRuleCount: policy.output ? 1 : 0,
+      });
+    }
 
-  if (policy) {
-    logger.info({
-      event: "gateway.guardrail_policy_loaded",
-      policyName: policy.identity.name,
-      policyVersion: policy.identity.version,
-      enabled: policy.enabled,
-      inputRuleCount: policy.input.length,
-      outputRuleCount: policy.output ? 1 : 0,
-    });
-  }
-
-  return {
-    gateway: new ModelGateway({
+    return new ModelGateway({
       provider,
       defaultModel,
       guardrails,
       logger,
       lifecycleListener,
-    }),
-    guardrails,
-    policy,
-  };
+    });
+  }
 }

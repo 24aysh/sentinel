@@ -1,8 +1,4 @@
-import {
-  toPublicChatRequest,
-  type ChatRequest,
-  type ChatResponse,
-} from "../domain/chat.ts";
+import type { ChatRequest, ChatResponse } from "../domain/chat.ts";
 import { GatewayError } from "../domain/errors.ts";
 import type { RequestContext } from "../domain/request-context.ts";
 import type { ModelProvider } from "./model-provider.ts";
@@ -41,6 +37,20 @@ function invalidResponse(
   message = "The model provider returned an invalid response.",
 ): never {
   throw new GatewayError("INVALID_MODEL_RESPONSE", message, 502);
+}
+
+function toProviderRequest(request: ChatRequest) {
+  return {
+    model: request.model,
+    messages: request.messages,
+    stream: false,
+    ...(request.temperature !== undefined && {
+      temperature: request.temperature,
+    }),
+    ...(request.maxTokens !== undefined && {
+      max_tokens: request.maxTokens,
+    }),
+  };
 }
 
 function parseChoice(value: unknown): ChatResponse["choices"][number] {
@@ -143,7 +153,7 @@ export class OpenAICompatibleProvider implements ModelProvider {
       response = await this.fetchImplementation(this.endpoint, {
         method: "POST",
         headers,
-        body: JSON.stringify(toPublicChatRequest(request)),
+        body: JSON.stringify(toProviderRequest(request)),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {

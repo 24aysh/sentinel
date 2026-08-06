@@ -37,39 +37,3 @@ export interface ChatResponse {
     totalTokens: number;
   };
 }
-
-export function toPublicChatRequest(request: ChatRequest) {
-  return {
-    model: request.model,
-    messages: request.messages,
-    stream: false,
-    ...(request.temperature !== undefined && {
-      temperature: request.temperature,
-    }),
-    ...(request.maxTokens !== undefined && {
-      max_tokens: request.maxTokens,
-    }),
-  };
-}
-
-export function toPublicChatResponse(response: ChatResponse) {
-  const publicResponse = {
-    id: response.id,
-    object: "chat.completion" as const,
-    created: response.created,
-    model: response.model,
-    choices: response.choices.map((choice) => ({
-      index: choice.index,
-      message: choice.message,
-      finish_reason: choice.finishReason,
-    })),
-    ...(response.usage && {
-      usage: {
-        prompt_tokens: response.usage.promptTokens,
-        completion_tokens: response.usage.completionTokens,
-        total_tokens: response.usage.totalTokens,
-      },
-    }),
-  };
-  return publicResponse;
-}

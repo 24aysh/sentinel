@@ -1,10 +1,12 @@
 import { strict as assert } from "node:assert";
-import type { ChatRequest, ChatResponse } from "../src/domain/chat.ts";
-import type { RequestContext } from "../src/domain/request-context.ts";
-import { silentLogger } from "../src/observability/logger.ts";
-import { GatewayPipeline } from "../src/pipeline/gateway-pipeline.ts";
-import type { LifecycleEvent } from "../src/pipeline/lifecycle.ts";
-import type { ModelProvider } from "../src/providers/model-provider.ts";
+import {
+  ModelGateway,
+  type ChatRequest,
+  type ChatResponse,
+  type LifecycleEvent,
+  type ModelProvider,
+  type RequestContext,
+} from "../src/index.ts";
 
 class DeterministicProvider implements ModelProvider {
   request?: ChatRequest;
@@ -24,7 +26,7 @@ class DeterministicProvider implements ModelProvider {
           index: 0,
           message: {
             role: "assistant",
-            content: "The gateway pipeline is working.",
+            content: "The gateway SDK is working.",
           },
           finishReason: "stop",
         },
@@ -40,33 +42,32 @@ class DeterministicProvider implements ModelProvider {
 
 const provider = new DeterministicProvider();
 const lifecycle: LifecycleEvent[] = [];
-const pipeline = new GatewayPipeline({
+const gateway = new ModelGateway({
   provider,
-  defaultModel: "pipeline-test-model",
-  logger: silentLogger,
+  defaultModel: "sdk-test-model",
   lifecycleListener: (event) => lifecycle.push(event),
 });
 
-const result = await pipeline.execute(
+const result = await gateway.chat.completions.create(
   {
     messages: [
       { role: "system", content: "Reply deterministically." },
-      { role: "user", content: "Check the gateway pipeline." },
+      { role: "user", content: "Check the gateway SDK." },
     ],
     temperature: 0,
     maxTokens: 32,
   },
-  { requestId: "pipeline-script-check" },
+  { requestId: "sdk-script-check" },
 );
 
-assert.equal(provider.request?.model, "pipeline-test-model");
+assert.equal(provider.request?.model, "sdk-test-model");
 assert.deepEqual(provider.request?.messages, [
   { role: "system", content: "Reply deterministically." },
-  { role: "user", content: "Check the gateway pipeline." },
+  { role: "user", content: "Check the gateway SDK." },
 ]);
 assert.equal(
   result.response.choices[0]?.message.content,
-  "The gateway pipeline is working.",
+  "The gateway SDK is working.",
 );
 assert.deepEqual(
   lifecycle.map((event) => event.stage),

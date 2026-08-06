@@ -34,12 +34,57 @@ async function run(command: string[], label: string): Promise<string> {
   return stdout;
 }
 
+async function exists(path: string): Promise<boolean> {
+  return stat(path).then(
+    () => true,
+    () => false,
+  );
+}
+
 try {
   await Promise.all(
-    ["index.js", "index.d.ts", "server.js", "server.d.ts"].map((file) =>
+    ["index.js", "index.d.ts"].map((file) =>
       stat(join(gatewayDirectory, "dist", file)),
     ),
   );
+
+  const manifest = JSON.parse(
+    await readFile(join(gatewayDirectory, "package.json"), "utf8"),
+  ) as {
+    dependencies?: Record<string, string>;
+    exports?: Record<string, unknown>;
+  };
+  if (Object.keys(manifest.exports ?? {}).join(",") !== ".") {
+    throw new Error("The package must expose only the main SDK entry.");
+  }
+  if (manifest.dependencies?.elysia) {
+    throw new Error("Elysia must not be a package dependency.");
+  }
+
+  const staleArtifacts = [
+    "app.js",
+    "app.d.ts",
+    "runtime.js",
+    "runtime.d.ts",
+    "server.js",
+    "server.d.ts",
+    "config/env.js",
+    "config/env.d.ts",
+    "transport/http",
+  ];
+  const stale = (
+    await Promise.all(
+      staleArtifacts.map(async (artifact) => ({
+        artifact,
+        exists: await exists(join(gatewayDirectory, "dist", artifact)),
+      })),
+    )
+  ).find(({ exists }) => exists);
+  if (stale) {
+    throw new Error(
+      `The clean build retained HTTP artifact ${stale.artifact}.`,
+    );
+  }
 
   const packageNamespace = join(
     consumerDirectory,
@@ -135,8 +180,7 @@ await writeFile(process.argv[2], result.response.choices[0]?.message.content ?? 
   const tsc = join(workspaceDirectory, "node_modules", ".bin", "tsc");
   await run([tsc, "--project", "tsconfig.json"], "declaration consumer");
 
-  const sideEffectScript =
-    'await import("@llm-gateway/sdk"); await import("@llm-gateway/sdk/server");';
+  const sideEffectScript = 'await import("@llm-gateway/sdk");';
   const sideEffectOutput = await run(
     [process.execPath, "--eval", sideEffectScript],
     "Bun side-effect import",

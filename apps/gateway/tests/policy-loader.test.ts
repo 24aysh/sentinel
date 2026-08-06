@@ -2,7 +2,7 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ConfigurationError } from "../src/config/env.ts";
+import { ConfigurationError } from "../src/domain/errors.ts";
 import { loadGuardrailPolicy } from "../src/guardrails/config/policy-loader.ts";
 
 const temporaryDirectories: string[] = [];

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ConfigurationError } from "../src/config/env.ts";
+import { ConfigurationError } from "../src/domain/errors.ts";
 import { ConfiguredGuardrailHub } from "../src/guardrails/guardrail-hub.ts";
 import { ModelGateway } from "../src/model-gateway.ts";
 import type { LogRecord, Logger } from "../src/observability/logger.ts";

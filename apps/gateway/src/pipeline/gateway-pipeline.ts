@@ -20,7 +20,7 @@ import {
   type LifecycleMetadata,
 } from "./lifecycle.ts";
 
-export interface GatewayPipelineOptions {
+interface GatewayPipelineOptions {
   provider: ModelProvider;
   defaultModel: string;
   guardrails?: GuardrailHub;

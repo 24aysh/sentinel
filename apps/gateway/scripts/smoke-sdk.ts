@@ -4,18 +4,47 @@ import {
   ModelGateway,
   OpenAICompatibleProvider,
 } from "../src/index.ts";
-import { loadConfig } from "../src/server.ts";
+
+function configuredValue(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value || undefined;
+}
+
+function modelBaseUrl(): string {
+  const value =
+    configuredValue("MODEL_BASE_URL") ?? "https://api.openai.com/v1";
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error();
+    }
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    throw new ConfigurationError(
+      "MODEL_BASE_URL must be a valid HTTP or HTTPS URL.",
+    );
+  }
+}
+
+function modelTimeoutMs(): number {
+  const value = Number(configuredValue("MODEL_TIMEOUT_MS") ?? "30000");
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ConfigurationError(
+      "MODEL_TIMEOUT_MS must be a positive integer.",
+    );
+  }
+  return value;
+}
 
 try {
-  const config = loadConfig();
   const gateway = await ModelGateway.create({
     provider: new OpenAICompatibleProvider({
-      baseUrl: config.modelBaseUrl,
-      apiKey: config.modelApiKey,
-      timeoutMs: config.modelTimeoutMs,
+      baseUrl: modelBaseUrl(),
+      apiKey: configuredValue("MODEL_API_KEY"),
+      timeoutMs: modelTimeoutMs(),
     }),
-    defaultModel: config.defaultModel,
-    policyPath: config.guardrailPolicyPath,
+    defaultModel: configuredValue("MODEL_DEFAULT") ?? "gpt-4.1-mini",
+    policyPath: configuredValue("GUARDRAIL_POLICY_PATH"),
   });
 
   const result = await gateway.chat.completions.create(

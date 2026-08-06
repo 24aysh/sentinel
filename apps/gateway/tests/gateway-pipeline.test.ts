@@ -6,6 +6,42 @@ import { GatewayPipeline } from "../src/pipeline/gateway-pipeline.ts";
 import type { LifecycleEvent } from "../src/pipeline/lifecycle.ts";
 import { FakeProvider, sampleChatResponse } from "./helpers/fake-provider.ts";
 
+const invalidInputs: Array<[name: string, input: ChatInput]> = [
+  ["missing messages", {} as ChatInput],
+  ["empty messages", { messages: [] }],
+  [
+    "an unsupported role",
+    {
+      messages: [{ role: "tool", content: "Hello" }],
+    } as unknown as ChatInput,
+  ],
+  ["empty content", { messages: [{ role: "user", content: "   " }] }],
+  [
+    "an empty explicit model",
+    { model: "   ", messages: [{ role: "user", content: "Hello" }] },
+  ],
+  [
+    "a negative temperature",
+    { messages: [{ role: "user", content: "Hello" }], temperature: -1 },
+  ],
+  [
+    "an excessive temperature",
+    { messages: [{ role: "user", content: "Hello" }], temperature: 3 },
+  ],
+  [
+    "a non-finite temperature",
+    { messages: [{ role: "user", content: "Hello" }], temperature: Infinity },
+  ],
+  [
+    "zero max tokens",
+    { messages: [{ role: "user", content: "Hello" }], maxTokens: 0 },
+  ],
+  [
+    "fractional max tokens",
+    { messages: [{ role: "user", content: "Hello" }], maxTokens: 1.5 },
+  ],
+];
+
 describe("GatewayPipeline", () => {
   test("forwards a normalized request once and records the successful lifecycle", async () => {
     const provider = new FakeProvider();
@@ -137,18 +173,17 @@ describe("GatewayPipeline", () => {
     expect(events[3]?.failedAt).toBe("provider_started");
   });
 
-  test("rejects whitespace-only message content", async () => {
+  test.each(invalidInputs)("rejects %s", async (_name, input) => {
     const provider = new FakeProvider();
     const pipeline = new GatewayPipeline({
       provider,
       defaultModel: "default-model",
     });
 
-    expect(
-      pipeline.execute({
-        messages: [{ role: "user", content: "   " }],
-      }),
-    ).rejects.toMatchObject({ code: "INVALID_REQUEST", status: 400 });
+    await expect(pipeline.execute(input)).rejects.toMatchObject({
+      code: "INVALID_REQUEST",
+      status: 400,
+    });
     expect(provider.calls).toHaveLength(0);
   });
 });

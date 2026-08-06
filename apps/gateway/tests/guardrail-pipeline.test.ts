@@ -208,14 +208,20 @@ describe("guardrail-enabled GatewayPipeline", () => {
       ),
     });
 
-    expect(
-      pipeline.execute({
+    try {
+      await pipeline.execute({
         messages: [{ role: "user", content: "test@example.com" }],
-      }),
-    ).rejects.toMatchObject({
-      code: "INPUT_GUARDRAIL_BLOCKED",
-      status: 400,
-    });
+      });
+      throw new Error("Expected input guardrail to block");
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "INPUT_GUARDRAIL_BLOCKED",
+        status: 400,
+        message: "The request was blocked by an input guardrail.",
+      });
+      expect(JSON.stringify(error)).not.toContain("test@example.com");
+      expect(JSON.stringify(error)).not.toContain("block-email");
+    }
     expect(provider.calls).toHaveLength(0);
   });
 

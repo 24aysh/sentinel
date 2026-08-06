@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import * as sdk from "../src/index.ts";
-import * as server from "../src/server.ts";
 import { FakeProvider } from "./helpers/fake-provider.ts";
 
 describe("public SDK entry points", () => {
@@ -8,8 +7,7 @@ describe("public SDK entry points", () => {
     expect(sdk.ModelGateway).toBeFunction();
     expect(sdk.OpenAICompatibleProvider).toBeFunction();
     expect(sdk.GatewayError).toBeFunction();
-    expect(server.createApp).toBeFunction();
-    expect(server.createRuntime).toBeFunction();
+    expect(sdk.ConfigurationError).toBeFunction();
 
     const gateway = new sdk.ModelGateway({
       provider: new FakeProvider(),

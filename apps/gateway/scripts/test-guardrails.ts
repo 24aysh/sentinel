@@ -1,13 +1,13 @@
 import { strict as assert } from "node:assert";
 import { resolve } from "node:path";
-import type { ChatRequest, ChatResponse } from "../src/domain/chat.ts";
-import type { RequestContext } from "../src/domain/request-context.ts";
-import { loadGuardrailPolicy } from "../src/guardrails/config/policy-loader.ts";
-import { ConfiguredGuardrailHub } from "../src/guardrails/guardrail-hub.ts";
-import { silentLogger } from "../src/observability/logger.ts";
-import { GatewayPipeline } from "../src/pipeline/gateway-pipeline.ts";
-import type { LifecycleEvent } from "../src/pipeline/lifecycle.ts";
-import type { ModelProvider } from "../src/providers/model-provider.ts";
+import {
+  ModelGateway,
+  type ChatRequest,
+  type ChatResponse,
+  type LifecycleEvent,
+  type ModelProvider,
+  type RequestContext,
+} from "../src/index.ts";
 
 const rawEmail = "pipeline.check@example.com";
 
@@ -33,7 +33,7 @@ class DeterministicGuardrailProvider implements ModelProvider {
             content: isRetry
               ? JSON.stringify({
                   status: "ok",
-                  message: "The guardrail pipeline is working.",
+                  message: "The guardrail SDK is working.",
                   contact: "<EMAIL>",
                 })
               : "This response is not JSON.",
@@ -51,18 +51,16 @@ class DeterministicGuardrailProvider implements ModelProvider {
 }
 
 const policyPath = resolve(import.meta.dir, "../policies/example-policy.yaml");
-const policy = await loadGuardrailPolicy(policyPath);
 const provider = new DeterministicGuardrailProvider();
 const lifecycle: LifecycleEvent[] = [];
-const pipeline = new GatewayPipeline({
+const gateway = await ModelGateway.create({
   provider,
   defaultModel: "guardrail-test-model",
-  guardrails: new ConfiguredGuardrailHub(policy),
-  logger: silentLogger,
+  policyPath,
   lifecycleListener: (event) => lifecycle.push(event),
 });
 
-const result = await pipeline.execute(
+const result = await gateway.chat.completions.create(
   {
     messages: [
       {
@@ -72,7 +70,7 @@ const result = await pipeline.execute(
     ],
     temperature: 0,
   },
-  { requestId: "guardrail-pipeline-check" },
+  { requestId: "guardrail-sdk-check" },
 );
 
 assert.equal(provider.requests.length, 2);
@@ -97,7 +95,7 @@ const parsed = JSON.parse(
 ) as { status?: string; contact?: string };
 assert.deepEqual(parsed, {
   status: "ok",
-  message: "The guardrail pipeline is working.",
+  message: "The guardrail SDK is working.",
   contact: "<EMAIL>",
 });
 

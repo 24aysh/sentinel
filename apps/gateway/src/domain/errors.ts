@@ -11,6 +11,13 @@ export type GatewayErrorCode =
   | "GUARDRAIL_EVALUATION_FAILED"
   | "INTERNAL_ERROR";
 
+export class ConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ConfigurationError";
+  }
+}
+
 export class GatewayError extends Error {
   readonly retryAfter?: string;
 

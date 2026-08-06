@@ -3,8 +3,7 @@ export {
   ChatResource,
   ModelGateway,
 } from "./model-gateway.ts";
-export { ConfigurationError } from "./config/env.ts";
-export { GatewayError } from "./domain/errors.ts";
+export { ConfigurationError, GatewayError } from "./domain/errors.ts";
 export { ConsoleLogger, silentLogger } from "./observability/logger.ts";
 export { OpenAICompatibleProvider } from "./providers/openai-compatible-provider.ts";
 

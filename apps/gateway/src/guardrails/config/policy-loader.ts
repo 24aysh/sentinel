@@ -8,8 +8,8 @@ import {
 } from "node:path";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { parseDocument } from "yaml";
-import { ConfigurationError } from "../../config/env.ts";
 import { CHAT_ROLES, type ChatRole } from "../../domain/chat.ts";
+import { ConfigurationError } from "../../domain/errors.ts";
 import { CompiledJsonSchemaValidator } from "../output/json-schema-validator.ts";
 import {
   PII_ENTITIES,
