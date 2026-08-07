@@ -227,9 +227,9 @@ Then run:
 bun run smoke:sdk
 ```
 
-The script constructs `ModelGateway` directly, sends one request, prints the
-first provider request after input guardrails, prints the assistant response,
-and reports request ID and duration.
+The script constructs `ModelGateway` directly, prints the original prompt,
+sends one request, prints the first provider request after input guardrails,
+prints the assistant response, and reports request ID and duration.
 
 With `GUARDRAIL_POLICY_PATH=policies/example-policy.yaml` and `enabled: true`,
 the provider request contains `<EMAIL>`. Compare it with the no-policy path:

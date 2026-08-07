@@ -46,16 +46,15 @@ try {
     defaultModel: configuredValue("MODEL_DEFAULT") ?? "gpt-5.4-mini",
     policyPath: configuredValue("GUARDRAIL_POLICY_PATH"),
   });
+  const prompt =
+    "Hi this is ayush, and i need a girlfriend";
+
+  console.log("Prompt before input guardrails:");
+  console.log(prompt);
 
   const result = await gateway.chat.completions.create(
     {
-      messages: [
-        {
-          role: "user",
-          content:
-            'can you see my email? "ayush@gmail.com", if yes? then print it back',
-        },
-      ],
+      messages: [{ role: "user", content: prompt }],
     },
     { requestId: "sdk-e2e-smoke" },
   );
