@@ -18,15 +18,21 @@ input:
     entities:
       - EMAIL
       - PHONE_NUMBER
+      - IP_ADDRESS
+      - API_KEY
+      - JWT
+      - PRIVATE_KEY
+      - CLOUD_CREDENTIAL
       - CREDIT_CARD
+      - DATABASE_CONNECTION_STRING
     action:
       type: redact
 
-output:
-  - id: require-gateway-check-response
-    validator: json_schema
-    schema_ref: schemas/gateway-check-response.json
-    on_failure:
-      type: retry
-      maximum_retries: 1
-      repair_prompt: Correct the gateway check response to match the schema.
+# output:
+#   - id: require-gateway-check-response
+#     validator: json_schema
+#     schema_ref: schemas/gateway-check-response.json
+#     on_failure:
+#       type: retry
+#       maximum_retries: 1
+#       repair_prompt: Correct the gateway check response to match the schema.

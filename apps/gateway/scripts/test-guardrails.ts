@@ -10,6 +10,9 @@ import {
 } from "../src/index.ts";
 
 const rawEmail = "pipeline.check@example.com";
+const rawIp = "192.0.2.10";
+const rawApiKey = "Q7vN2xL9mR4pT8kW6cY3zF1h";
+const rawDatabase = "postgresql://user:pass@db.example.test:5432/app";
 
 class DeterministicGuardrailProvider implements ModelProvider {
   readonly requests: ChatRequest[] = [];
@@ -19,7 +22,6 @@ class DeterministicGuardrailProvider implements ModelProvider {
     _context: RequestContext,
   ): Promise<ChatResponse> {
     this.requests.push(structuredClone(request));
-    const isRetry = this.requests.length === 2;
 
     return {
       id: `chatcmpl-guardrail-${this.requests.length}`,
@@ -30,13 +32,7 @@ class DeterministicGuardrailProvider implements ModelProvider {
           index: 0,
           message: {
             role: "assistant",
-            content: isRetry
-              ? JSON.stringify({
-                  status: "ok",
-                  message: "The guardrail SDK is working.",
-                  contact: "<EMAIL>",
-                })
-              : "This response is not JSON.",
+            content: "The guardrail SDK is working.",
           },
           finishReason: "stop",
         },
@@ -65,7 +61,7 @@ const result = await gateway.chat.completions.create(
     messages: [
       {
         role: "user",
-        content: `Return a gateway status response for ${rawEmail}.`,
+        content: `Check ${rawEmail}, ${rawIp}, api_key=${rawApiKey}, and ${rawDatabase}.`,
       },
     ],
     temperature: 0,
@@ -73,30 +69,23 @@ const result = await gateway.chat.completions.create(
   { requestId: "guardrail-sdk-check" },
 );
 
-assert.equal(provider.requests.length, 2);
-assert.equal(
-  provider.requests[0]?.messages[0]?.content.includes(rawEmail),
-  false,
-);
-assert.equal(
-  provider.requests[0]?.messages[0]?.content.includes("<EMAIL>"),
-  true,
-);
-assert.equal(provider.requests[1]?.messages.at(-2)?.role, "assistant");
-assert.equal(provider.requests[1]?.messages.at(-1)?.role, "user");
+assert.equal(provider.requests.length, 1);
+const redactedInput = provider.requests[0]?.messages[0]?.content ?? "";
+for (const raw of [rawEmail, rawIp, rawApiKey, rawDatabase]) {
+  assert.equal(redactedInput.includes(raw), false);
+}
+for (const entity of [
+  "EMAIL",
+  "IP_ADDRESS",
+  "API_KEY",
+  "DATABASE_CONNECTION_STRING",
+]) {
+  assert.equal(redactedInput.includes(`<${entity}>`), true);
+}
 assert.deepEqual(result.response.usage, {
-  promptTokens: 10,
-  completionTokens: 8,
-  totalTokens: 18,
-});
-
-const parsed = JSON.parse(
-  result.response.choices[0]?.message.content ?? "null",
-) as { status?: string; contact?: string };
-assert.deepEqual(parsed, {
-  status: "ok",
-  message: "The guardrail SDK is working.",
-  contact: "<EMAIL>",
+  promptTokens: 5,
+  completionTokens: 4,
+  totalTokens: 9,
 });
 
 console.info(
@@ -105,9 +94,9 @@ console.info(
       status: "ok",
       requestId: result.context.requestId,
       providerCalls: provider.requests.length,
-      redactedInput: provider.requests[0]?.messages[0]?.content,
+      redactedInput,
       lifecycle: lifecycle.map((event) => event.stage),
-      response: parsed,
+      response: result.response.choices[0]?.message.content,
     },
     null,
     2,

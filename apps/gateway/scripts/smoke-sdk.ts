@@ -43,7 +43,7 @@ try {
       apiKey: configuredValue("MODEL_API_KEY"),
       timeoutMs: modelTimeoutMs(),
     }),
-    defaultModel: configuredValue("MODEL_DEFAULT") ?? "gpt-4.1-mini",
+    defaultModel: configuredValue("MODEL_DEFAULT") ?? "gpt-5.4-mini",
     policyPath: configuredValue("GUARDRAIL_POLICY_PATH"),
   });
 
@@ -53,7 +53,7 @@ try {
         {
           role: "user",
           content:
-            'Return only JSON with status "ok", a short message, and contact exactly as provided: smoke.sdk@gmail.com',
+            'can you see my email? "ayush@gmail.com", if yes? then print it back',
         },
       ],
     },

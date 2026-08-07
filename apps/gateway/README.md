@@ -5,9 +5,12 @@ A TypeScript-first, in-process model gateway. Applications instantiate
 chat-completion API directly. The package does not start or expose an HTTP
 server.
 
-The current guardrails support deterministic email, phone-number, and
-credit-card input handling plus strict JSON Schema output validation and bounded
-repair retries.
+The input guardrail detects emails, phone numbers, IP addresses, API keys,
+JWTs, private keys, AWS/Google/Azure credentials, credit cards, and database
+connection strings. It combines bounded patterns with structural validation;
+cards use Luhn checks and generic secrets require contextual labels and entropy.
+IBANs and national identifiers are not included yet. Output guardrails provide
+strict JSON Schema validation and bounded repair retries.
 
 ## Requirements
 
@@ -140,8 +143,29 @@ enabled: true
 - `false`: the policy is validated but prompts and responses bypass guardrails.
 - No `policyPath`: no policy file is loaded.
 
-The checked-in policy redacts supported PII and validates responses against
-`policies/schemas/gateway-check-response.json`.
+The checked-in policy redacts all supported input entities. Its optional output
+schema rule is included as a commented example.
+
+Input rules use these entity names:
+
+```yaml
+entities:
+  - EMAIL
+  - PHONE_NUMBER
+  - IP_ADDRESS
+  - API_KEY
+  - JWT
+  - PRIVATE_KEY
+  - CLOUD_CREDENTIAL
+  - CREDIT_CARD
+  - DATABASE_CONNECTION_STRING
+```
+
+Detection is local and structural; it does not verify whether a credential is
+active, validate JWT signatures, or classify output. Credential formats are
+intentionally bounded to distinctive API-key prefixes, contextual generic
+secrets, AWS access keys, Google API keys/service-account key IDs, Azure Storage
+keys/SAS tokens, supported PEM keys, and common database URI/SQL Server DSNs.
 
 ## Lifecycle
 
@@ -177,8 +201,8 @@ bun run test:guardrails
 ```
 
 `test:pipeline` verifies the no-policy class path. `test:guardrails` verifies
-YAML loading, PII redaction, output repair, usage aggregation, and lifecycle
-events through `ModelGateway.create()`.
+YAML loading, expanded PII redaction, usage, and lifecycle events through
+`ModelGateway.create()`.
 
 Build the package and run external TypeScript, Bun, Node, clean-artifact, and
 side-effect checks:

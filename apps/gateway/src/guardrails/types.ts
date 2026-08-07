@@ -1,7 +1,17 @@
 import type { ChatRequest, ChatResponse, ChatRole } from "../domain/chat.ts";
 import type { RequestContext } from "../domain/request-context.ts";
 
-export const PII_ENTITIES = ["EMAIL", "PHONE_NUMBER", "CREDIT_CARD"] as const;
+export const PII_ENTITIES = [
+  "EMAIL",
+  "PHONE_NUMBER",
+  "IP_ADDRESS",
+  "API_KEY",
+  "JWT",
+  "PRIVATE_KEY",
+  "CLOUD_CREDENTIAL",
+  "CREDIT_CARD",
+  "DATABASE_CONNECTION_STRING",
+] as const;
 
 export type PiiEntity = (typeof PII_ENTITIES)[number];
 export type InputActionType = "allow" | "redact" | "block";

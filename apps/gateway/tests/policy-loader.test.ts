@@ -34,6 +34,23 @@ afterAll(async () => {
 });
 
 describe("loadGuardrailPolicy", () => {
+  test("accepts every expanded entity", async () => {
+    const path = await createFixture(`
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+metadata: { name: expanded, version: 1 }
+input:
+  - id: expanded-pii
+    detector: pii
+    entities: [EMAIL, PHONE_NUMBER, IP_ADDRESS, API_KEY, JWT, PRIVATE_KEY, CLOUD_CREDENTIAL, CREDIT_CARD, DATABASE_CONNECTION_STRING]
+    action: { type: redact }
+`);
+
+    expect((await loadGuardrailPolicy(path)).input[0]?.entities).toHaveLength(
+      9,
+    );
+  });
+
   test("loads, normalizes, and compiles a valid policy", async () => {
     const path = await createFixture(`
 apiVersion: guardrails/v1
