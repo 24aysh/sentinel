@@ -1,0 +1,172 @@
+[
+  {
+    "name": "benign_ignore",
+    "rows": 135,
+    "insufficientSample": false,
+    "falsePositiveRate": 0.014814814814814815
+  },
+  {
+    "name": "benign_non_ignore",
+    "rows": 3673,
+    "insufficientSample": false,
+    "falsePositiveRate": 0.018513476722025593
+  },
+  {
+    "name": "injection_ignore",
+    "rows": 416,
+    "insufficientSample": false,
+    "recall": 0.9975961538461539
+  },
+  {
+    "name": "injection_non_ignore",
+    "rows": 3388,
+    "insufficientSample": false,
+    "recall": 0.98642266824085
+  },
+  {
+    "name": "source::jayavibhav/prompt-injection",
+    "rows": 1952,
+    "insufficientSample": false,
+    "accuracy": 0.9907786885245902,
+    "macroF1": 0.9907740008318524,
+    "injectionPrecision": 0.9929718875502008,
+    "injectionRecall": 0.989,
+    "injectionF1": 0.9909819639278558,
+    "falsePositiveRate": 0.007352941176470588,
+    "falseNegativeRate": 0.011,
+    "prAuc": 0.9993995130185297,
+    "rocAuc": 0.9992867647058823,
+    "confusionMatrix": {
+      "tn": 945,
+      "fp": 7,
+      "fn": 11,
+      "tp": 989
+    }
+  },
+  {
+    "name": "source::jayavibhav/prompt-injection-safety",
+    "rows": 5029,
+    "insufficientSample": false,
+    "accuracy": 0.9894611254722608,
+    "macroF1": 0.9894603186654385,
+    "injectionPrecision": 0.9878000787091696,
+    "injectionRecall": 0.9913112164296999,
+    "injectionF1": 0.9895525330179381,
+    "falsePositiveRate": 0.012414897877452943,
+    "falseNegativeRate": 0.008688783570300158,
+    "prAuc": 0.9993387965459549,
+    "rocAuc": 0.999200541439617,
+    "confusionMatrix": {
+      "tn": 2466,
+      "fp": 31,
+      "fn": 22,
+      "tp": 2510
+    }
+  },
+  {
+    "name": "source::project-generated-v3",
+    "rows": 146,
+    "insufficientSample": false,
+    "accuracy": 1.0,
+    "macroF1": 1.0,
+    "injectionPrecision": 1.0,
+    "injectionRecall": 1.0,
+    "injectionF1": 1.0,
+    "falsePositiveRate": 0.0,
+    "falseNegativeRate": 0.0,
+    "prAuc": 1.0,
+    "rocAuc": 1.0,
+    "confusionMatrix": {
+      "tn": 73,
+      "fp": 0,
+      "fn": 0,
+      "tp": 73
+    }
+  },
+  {
+    "name": "source::rogue-security/prompt-injections-benchmark",
+    "rows": 485,
+    "insufficientSample": false,
+    "accuracy": 0.9051546391752577,
+    "macroF1": 0.9031952929741738,
+    "injectionPrecision": 0.8525345622119815,
+    "injectionRecall": 0.9296482412060302,
+    "injectionF1": 0.8894230769230769,
+    "falsePositiveRate": 0.11188811188811189,
+    "falseNegativeRate": 0.07035175879396985,
+    "prAuc": 0.9571056043200131,
+    "rocAuc": 0.9671258389851354,
+    "confusionMatrix": {
+      "tn": 254,
+      "fp": 32,
+      "fn": 14,
+      "tp": 185
+    }
+  },
+  {
+    "name": "category::attack_fake_authority",
+    "rows": 12,
+    "insufficientSample": true,
+    "recall": 1.0
+  },
+  {
+    "name": "category::attack_hierarchy_override",
+    "rows": 6,
+    "insufficientSample": true,
+    "recall": 1.0
+  },
+  {
+    "name": "category::attack_instruction_replacement",
+    "rows": 12,
+    "insufficientSample": true,
+    "recall": 1.0
+  },
+  {
+    "name": "category::attack_obfuscated",
+    "rows": 12,
+    "insufficientSample": true,
+    "recall": 1.0
+  },
+  {
+    "name": "category::attack_prompt_extraction",
+    "rows": 7,
+    "insufficientSample": true,
+    "recall": 1.0
+  },
+  {
+    "name": "category::attack_role_hijack",
+    "rows": 12,
+    "insufficientSample": true,
+    "recall": 1.0
+  },
+  {
+    "name": "category::attack_tool_rag",
+    "rows": 12,
+    "insufficientSample": true,
+    "recall": 1.0
+  },
+  {
+    "name": "category::benign_legitimate_ignore",
+    "rows": 4,
+    "insufficientSample": true,
+    "falsePositiveRate": 0.0
+  },
+  {
+    "name": "category::benign_quoted_attack",
+    "rows": 16,
+    "insufficientSample": true,
+    "falsePositiveRate": 0.0
+  },
+  {
+    "name": "category::benign_security_discussion",
+    "rows": 24,
+    "insufficientSample": true,
+    "falsePositiveRate": 0.0
+  },
+  {
+    "name": "category::benign_translation_redaction",
+    "rows": 29,
+    "insufficientSample": true,
+    "falsePositiveRate": 0.0
+  }
+]

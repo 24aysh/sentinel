@@ -1,0 +1,10 @@
+{
+  "profile": "full",
+  "seed": 42,
+  "baseModel": "distilbert/distilbert-base-uncased",
+  "baseModelRevision": "12040accade4e8a0f71eabdb258fecc2e7e948be",
+  "threshold": 0.18499999999999997,
+  "maxLength": 256,
+  "testStatus": "complete",
+  "qualityGatePassed": true
+}

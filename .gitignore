@@ -32,7 +32,10 @@ dist
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
+new.md
+prompt_injection_guardrail_beginner_guide.md
+apps/.onnx-env
+apps/model/pytorch-model
 # Misc
 .DS_Store
 *.pem
