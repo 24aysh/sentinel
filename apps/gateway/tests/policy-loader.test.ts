@@ -46,9 +46,11 @@ input:
     action: { type: redact }
 `);
 
-    expect((await loadGuardrailPolicy(path)).input[0]?.entities).toHaveLength(
-      9,
-    );
+    const rule = (await loadGuardrailPolicy(path)).input[0];
+    expect(rule?.detector).toBe("pii");
+    if (rule?.detector === "pii") {
+      expect(rule.entities).toHaveLength(9);
+    }
   });
 
   test("loads, normalizes, and compiles a valid policy", async () => {

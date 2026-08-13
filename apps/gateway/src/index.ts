@@ -18,6 +18,7 @@ export type { GatewayErrorCode } from "./domain/errors.ts";
 export type { RequestContext } from "./domain/request-context.ts";
 export type {
   GuardrailHub,
+  InputDetectorType,
   InputGuardrailResult,
   OutputGuardrailResult,
   PolicyIdentity,

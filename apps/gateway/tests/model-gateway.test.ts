@@ -67,6 +67,7 @@ describe("ModelGateway SDK", () => {
           input: [
             {
               id: "redact-email",
+              detector: "pii",
               entities: ["EMAIL"],
               action: { type: "redact" },
             },
@@ -101,6 +102,39 @@ describe("ModelGateway SDK", () => {
       "provider_completed",
       "completed",
     ]);
+  });
+
+  test("rejects an unused prompt-injection model path", async () => {
+    await expect(
+      ModelGateway.create({
+        provider: new FakeProvider(),
+        defaultModel: "test-model",
+        promptInjectionModelPath: "does-not-exist",
+      }),
+    ).rejects.toBeInstanceOf(ConfigurationError);
+
+    await expect(
+      ModelGateway.create({
+        provider: new FakeProvider(),
+        defaultModel: "test-model",
+        policyPath: "fixtures/sdk-enabled-policy.yaml",
+        policyWorkingDirectory: import.meta.dir,
+        promptInjectionModelPath: "does-not-exist",
+      }),
+    ).rejects.toBeInstanceOf(ConfigurationError);
+  });
+
+  test("requires a model path for an enabled prompt-injection rule", async () => {
+    await expect(
+      ModelGateway.create({
+        provider: new FakeProvider(),
+        defaultModel: "test-model",
+        policyPath: "fixtures/sdk-prompt-injection-policy.yaml",
+        policyWorkingDirectory: import.meta.dir,
+      }),
+    ).rejects.toThrow(
+      "promptInjectionModelPath is required by the enabled prompt_injection policy rule.",
+    );
   });
 
   test("loads an enabled relative YAML policy once and logs only metadata", async () => {
@@ -145,6 +179,7 @@ describe("ModelGateway SDK", () => {
       defaultModel: "test-model",
       policyPath: "fixtures/disabled-policy.yaml",
       policyWorkingDirectory: import.meta.dir,
+      promptInjectionModelPath: "does-not-exist",
     });
 
     const result = await gateway.chat.completions.create({

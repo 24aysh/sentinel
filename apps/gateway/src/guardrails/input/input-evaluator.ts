@@ -3,6 +3,7 @@ import type {
   InputGuardrailResult,
   InputPolicyAction,
   LoadedGuardrailPolicy,
+  PiiInputPolicyRule,
   PiiFinding,
 } from "../types.ts";
 import { detectPii } from "./pii-detector.ts";
@@ -17,11 +18,16 @@ function resolve(
   finding: PiiFinding,
   policy: LoadedGuardrailPolicy,
 ): ResolvedFinding {
-  const rule = policy.input.find(
-    ({ entities, roles }) =>
-      entities.includes(finding.entity) &&
-      (roles === undefined || roles.includes(finding.role)),
-  );
+  const rule = policy.input
+    .filter(
+      (candidate): candidate is PiiInputPolicyRule =>
+        candidate.detector === "pii",
+    )
+    .find(
+      ({ entities, roles }) =>
+        entities.includes(finding.entity) &&
+        (roles === undefined || roles.includes(finding.role)),
+    );
   return rule
     ? { finding, action: rule.action, ruleId: rule.id }
     : { finding, action: { type: policy.defaults.inputAction } };
@@ -49,7 +55,7 @@ function redact(
   };
 }
 
-export function evaluateInput(
+export function evaluatePiiInput(
   request: ChatRequest,
   policy: LoadedGuardrailPolicy,
 ): InputGuardrailResult {
@@ -61,6 +67,7 @@ export function evaluateInput(
       ...new Set(resolved.flatMap(({ ruleId }) => (ruleId ? [ruleId] : []))),
     ],
     entityTypes: [...new Set(findings.map(({ entity }) => entity))],
+    detectorTypes: ["pii" as const],
   };
 
   if (resolved.some(({ action }) => action.type === "block")) {

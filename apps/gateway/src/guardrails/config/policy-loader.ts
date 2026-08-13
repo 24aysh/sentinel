@@ -188,38 +188,54 @@ function parseInputRules(value: unknown): InputPolicyRule[] {
   if (value === undefined) return [];
   return array(value, "input").map((item, index) => {
     const location = `input[${index}]`;
-    const rule = object(item, location, [
-      "id",
-      "description",
-      "detector",
-      "entities",
-      "roles",
-      "action",
-    ]);
-    if (rule.detector !== "pii") {
-      fail(`must use detector pii at ${location}.detector.`);
-    }
+    const candidate = object(item, location);
+    const detector = oneOf(
+      candidate.detector,
+      ["pii", "prompt_injection"],
+      `${location}.detector`,
+    );
+    const rule = object(
+      item,
+      location,
+      detector === "pii"
+        ? ["id", "description", "detector", "entities", "roles", "action"]
+        : ["id", "description", "detector", "roles", "action"],
+    );
     if (rule.description !== undefined) {
       text(rule.description, `${location}.description`, 2_000);
     }
 
-    const result: InputPolicyRule = {
+    if (detector === "prompt_injection") {
+      const action = object(rule.action, `${location}.action`, ["type"]);
+      return {
+        id: name(rule.id, `${location}.id`),
+        detector,
+        roles: enumArray<ChatRole>(rule.roles, CHAT_ROLES, `${location}.roles`),
+        action: {
+          type: oneOf(
+            action.type,
+            ["allow", "block"],
+            `${location}.action.type`,
+          ),
+        },
+      };
+    }
+
+    const roles =
+      rule.roles === undefined
+        ? undefined
+        : enumArray<ChatRole>(rule.roles, CHAT_ROLES, `${location}.roles`);
+    return {
       id: name(rule.id, `${location}.id`),
+      detector,
       entities: enumArray<PiiEntity>(
         rule.entities,
         PII_ENTITIES,
         `${location}.entities`,
       ),
       action: parseInputAction(rule.action, `${location}.action`),
+      ...(roles && { roles }),
     };
-    if (rule.roles !== undefined) {
-      result.roles = enumArray<ChatRole>(
-        rule.roles,
-        CHAT_ROLES,
-        `${location}.roles`,
-      );
-    }
-    return result;
   });
 }
 

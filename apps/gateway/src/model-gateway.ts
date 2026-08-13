@@ -2,6 +2,7 @@ import type { ChatInput } from "./domain/chat.ts";
 import { ConfigurationError } from "./domain/errors.ts";
 import { loadGuardrailPolicy } from "./guardrails/config/policy-loader.ts";
 import { ConfiguredGuardrailHub } from "./guardrails/guardrail-hub.ts";
+import { loadOnnxPromptInjectionClassifier } from "./guardrails/input/onnx-prompt-injection-classifier.ts";
 import type { GuardrailHub } from "./guardrails/types.ts";
 import { silentLogger, type Logger } from "./observability/logger.ts";
 import {
@@ -25,6 +26,7 @@ export interface ModelGatewayCreateOptions {
   defaultModel: string;
   policyPath?: string;
   policyWorkingDirectory?: string;
+  promptInjectionModelPath?: string;
   logger?: Logger;
   lifecycleListener?: LifecycleListener;
 }
@@ -79,14 +81,43 @@ export class ModelGateway {
     defaultModel,
     policyPath,
     policyWorkingDirectory,
+    promptInjectionModelPath,
     logger = silentLogger,
     lifecycleListener,
   }: ModelGatewayCreateOptions): Promise<ModelGateway> {
     const policy = policyPath
       ? await loadGuardrailPolicy(policyPath, policyWorkingDirectory)
       : undefined;
+    const requiresPromptInjectionModel =
+      policy?.enabled === true &&
+      policy.input.some((rule) => rule.detector === "prompt_injection");
+    if (!policy && promptInjectionModelPath) {
+      throw new ConfigurationError(
+        "promptInjectionModelPath requires an enabled prompt_injection policy rule.",
+      );
+    }
+    if (
+      policy?.enabled === true &&
+      !requiresPromptInjectionModel &&
+      promptInjectionModelPath
+    ) {
+      throw new ConfigurationError(
+        "promptInjectionModelPath requires an enabled prompt_injection policy rule.",
+      );
+    }
+    if (requiresPromptInjectionModel && !promptInjectionModelPath) {
+      throw new ConfigurationError(
+        "promptInjectionModelPath is required by the enabled prompt_injection policy rule.",
+      );
+    }
+    const promptInjectionClassifier = requiresPromptInjectionModel
+      ? await loadOnnxPromptInjectionClassifier(
+          promptInjectionModelPath!,
+          policyWorkingDirectory,
+        )
+      : undefined;
     const guardrails = policy?.enabled
-      ? new ConfiguredGuardrailHub(policy)
+      ? new ConfiguredGuardrailHub(policy, promptInjectionClassifier)
       : undefined;
 
     if (policy) {
@@ -97,6 +128,12 @@ export class ModelGateway {
         enabled: policy.enabled,
         inputRuleCount: policy.input.length,
         outputRuleCount: policy.output ? 1 : 0,
+      });
+    }
+    if (promptInjectionClassifier) {
+      logger.info({
+        event: "gateway.prompt_injection_model_loaded",
+        artifactId: promptInjectionClassifier.identity.artifactId,
       });
     }
 

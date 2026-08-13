@@ -15,6 +15,7 @@ export const PII_ENTITIES = [
 
 export type PiiEntity = (typeof PII_ENTITIES)[number];
 export type InputActionType = "allow" | "redact" | "block";
+export type InputDetectorType = "pii" | "prompt_injection";
 export type RuntimeFailureMode = "open" | "closed";
 
 export interface PolicyIdentity {
@@ -33,12 +34,23 @@ export interface InputPolicyAction {
   replacement?: string;
 }
 
-export interface InputPolicyRule {
+export interface PiiInputPolicyRule {
   id: string;
+  detector: "pii";
   entities: PiiEntity[];
   roles?: ChatRole[];
   action: InputPolicyAction;
 }
+
+export interface PromptInjectionInputPolicyRule {
+  id: string;
+  detector: "prompt_injection";
+  roles: ChatRole[];
+  action: { type: "allow" | "block" };
+}
+
+export type InputPolicyRule =
+  PiiInputPolicyRule | PromptInjectionInputPolicyRule;
 
 export type OutputFailureAction =
   | { type: "block" }
@@ -74,6 +86,11 @@ export interface PiiFinding {
 interface GuardrailResultMetadata {
   ruleIds: string[];
   entityTypes: PiiEntity[];
+  detectorTypes?: InputDetectorType[];
+  failedDetectorTypes?: InputDetectorType[];
+  promptInjectionModelId?: string;
+  evaluatedMessageCount?: number;
+  evaluatedWindowCount?: number;
 }
 
 export type InputGuardrailResult =

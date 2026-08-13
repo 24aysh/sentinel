@@ -186,12 +186,24 @@ export class GatewayPipeline {
           findingCount: inputResult.findingCount,
           ruleIds: inputResult.ruleIds,
           entityTypes: inputResult.entityTypes,
+          detectorTypes: inputResult.detectorTypes,
+          failedDetectorTypes: inputResult.failedDetectorTypes,
+          promptInjectionModelId: inputResult.promptInjectionModelId,
+          evaluatedMessageCount: inputResult.evaluatedMessageCount,
+          evaluatedWindowCount: inputResult.evaluatedWindowCount,
         };
         lifecycle.record("input_guardrails_completed", {
           ...policyMetadata,
           ...decisionMetadata,
         });
         this.logDecision("input", decisionMetadata, context);
+        if (inputResult.failedDetectorTypes?.length) {
+          this.logRuntimeFailure(
+            "input",
+            context,
+            inputResult.failedDetectorTypes,
+          );
+        }
 
         if (inputResult.decision === "block") {
           throw new GatewayError(
@@ -331,6 +343,7 @@ export class GatewayPipeline {
   private logRuntimeFailure(
     phase: "input" | "output",
     context: RequestContext,
+    detectorTypes?: readonly string[],
   ): void {
     this.logger.error({
       event: "gateway.guardrail_runtime_failure",
@@ -339,6 +352,7 @@ export class GatewayPipeline {
       action: "fail_open",
       policyName: this.guardrails!.identity.name,
       policyVersion: this.guardrails!.identity.version,
+      ...(detectorTypes && { detectorTypes }),
     });
   }
 

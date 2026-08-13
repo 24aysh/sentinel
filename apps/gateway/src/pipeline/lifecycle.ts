@@ -24,6 +24,11 @@ export interface LifecycleMetadata {
   findingCount?: number;
   ruleIds?: string[];
   entityTypes?: string[];
+  detectorTypes?: string[];
+  failedDetectorTypes?: string[];
+  promptInjectionModelId?: string;
+  evaluatedMessageCount?: number;
+  evaluatedWindowCount?: number;
   attempt?: number;
   maximumAttempts?: number;
 }

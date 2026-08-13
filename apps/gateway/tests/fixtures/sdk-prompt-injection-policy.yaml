@@ -1,0 +1,11 @@
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+enabled: true
+metadata:
+  name: sdk-prompt-injection-policy
+  version: 1
+input:
+  - id: block-prompt-injection
+    detector: prompt_injection
+    roles: [user]
+    action: { type: block }
