@@ -46,7 +46,7 @@ class DeterministicGuardrailProvider implements ModelProvider {
   }
 }
 
-const policyPath = resolve(import.meta.dir, "../policies/example-policy.yaml");
+const policyPath = resolve(import.meta.dir, "../policies/pii-policy.yaml");
 const provider = new DeterministicGuardrailProvider();
 const lifecycle: LifecycleEvent[] = [];
 const gateway = await ModelGateway.create({

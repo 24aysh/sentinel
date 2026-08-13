@@ -4,7 +4,7 @@ enabled: true
 
 metadata:
   name: gateway-e2e
-  version: 1
+  version: 2
 
 defaults:
   input_action: allow
@@ -27,6 +27,15 @@ input:
       - DATABASE_CONNECTION_STRING
     action:
       type: redact
+
+  # Start in shadow mode. Change to block only after reviewing deployment data.
+  - id: inspect-user-prompt-injection
+    description: Run the local classifier after PII redaction.
+    detector: prompt_injection
+    roles:
+      - user
+    action:
+      type: allow
 
 # output:
 #   - id: require-gateway-check-response

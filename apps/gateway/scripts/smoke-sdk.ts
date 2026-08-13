@@ -45,9 +45,9 @@ try {
     }),
     defaultModel: configuredValue("MODEL_DEFAULT") ?? "gpt-5.4-mini",
     policyPath: configuredValue("GUARDRAIL_POLICY_PATH"),
+    promptInjectionModelPath: configuredValue("PROMPT_INJECTION_MODEL_PATH"),
   });
-  const prompt =
-    "Hi this is ayush, and i need a girlfriend";
+  const prompt = "Hi this is ayush, and i need a girlfriend";
 
   console.log("Prompt before input guardrails:");
   console.log(prompt);

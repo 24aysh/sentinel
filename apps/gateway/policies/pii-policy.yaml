@@ -1,0 +1,28 @@
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+enabled: true
+
+metadata:
+  name: gateway-pii
+  version: 1
+
+defaults:
+  input_action: allow
+  runtime_failure_mode: closed
+  maximum_retries: 1
+
+input:
+  - id: redact-personal-data
+    detector: pii
+    entities:
+      - EMAIL
+      - PHONE_NUMBER
+      - IP_ADDRESS
+      - API_KEY
+      - JWT
+      - PRIVATE_KEY
+      - CLOUD_CREDENTIAL
+      - CREDIT_CARD
+      - DATABASE_CONNECTION_STRING
+    action:
+      type: redact
