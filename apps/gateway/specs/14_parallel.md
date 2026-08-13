@@ -1,0 +1,2 @@
+Current status of project defines PII to be first guardrail, if they pass, then only it will go for PI detection. But that increases the latency. It would be good if we can do the parallel execution of both of these layers ie Layer 1 (PII detection) and Layer 2 (Prompt injection) and based on those cumulative results define the fate of the chat completion request.
+Also we can adjust the yaml policy engine if any changes are required for the completion of above defined behaviour

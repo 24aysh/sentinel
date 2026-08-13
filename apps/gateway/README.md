@@ -202,11 +202,31 @@ Prompt-injection rules have a deliberately small shape:
     type: allow # shadow; use block for enforcement
 ```
 
-Layer 1 always runs first, so Layer 2 sees redacted content. PII blocks skip
-inference. A Layer 2 block returns the existing generic
-`INPUT_GUARDRAIL_BLOCKED` error and the provider is not called. Selected input
-is bounded to 50,000 UTF-16 code units and 32 overlapping 256-token windows;
-exceeding either safety limit blocks the request.
+Input detectors run sequentially unless the policy explicitly enables
+parallel evaluation:
+
+```yaml
+defaults:
+  input_execution_mode: parallel
+```
+
+In sequential mode, PII is handled first and Layer 2 classifies the redacted
+request. In parallel mode, Layer 2 starts on the original normalized messages
+while PII is evaluated independently; the provider still receives only the
+PII-safe request. Parallel mode therefore allows raw PII to enter local
+tokenizer and ONNX process memory. Use sequential mode when that local-memory
+boundary is unacceptable.
+
+The cumulative decision uses `block > redact > allow`. Either detector can
+block, prompt-injection shadow findings cannot undo PII handling, and every
+started detector is awaited before provider dispatch.
+
+In sequential mode, PII blocks skip inference. In parallel mode, every started
+detector is allowed to finish even when its peer has already found a block. A
+Layer 2 block returns the existing generic `INPUT_GUARDRAIL_BLOCKED` error and
+the provider is not called. Selected input is bounded to 50,000 UTF-16 code
+units and 32 overlapping 256-token windows; exceeding either safety limit
+blocks the request.
 
 ## Lifecycle
 
@@ -265,6 +285,15 @@ Both use a recording provider. They assert that a benign request reaches it
 and a direct injection does not. The Bun smoke also verifies that PII was
 redacted before provider dispatch. Neither command calls an external LLM.
 
+To compare warmed sequential and parallel input-guardrail latency using only
+synthetic fixtures:
+
+```bash
+bun run benchmark:input-guardrails -- ../model 10
+```
+
+The benchmark prints aggregate latency, memory, and decision agreement only.
+
 ## Real-provider SDK smoke
 
 Copy and configure the example environment:
@@ -294,6 +323,26 @@ GUARDRAIL_POLICY_PATH= bun run smoke:sdk
 
 The second request contains the original synthetic email. No local gateway
 server should be started for either command.
+
+### Manual prompt-injection smoke
+
+Run the same editable prompt with the prompt-injection-only policy:
+
+```bash
+bun run smoke:prompt-injection -- pi-only
+```
+
+Or run it with prompt-injection and email redaction enabled together:
+
+```bash
+bun run smoke:prompt-injection -- pi-pii
+```
+
+Set `PROMPT_INJECTION_MODEL_PATH` if the ONNX model is not in `apps/model`.
+The script reports `ALLOWED` and prints the LLM response, or reports `DECLINED`
+with the gateway error code and reason. Provider configuration uses the same
+`MODEL_BASE_URL`, `MODEL_API_KEY`, `MODEL_DEFAULT`, and `MODEL_TIMEOUT_MS`
+variables as `smoke:sdk`.
 
 ## Current limitations
 
