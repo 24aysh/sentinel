@@ -25,6 +25,7 @@
     "test:guardrails": "bun scripts/test-guardrails.ts",
     "seal:prompt-injection-model": "bun scripts/seal-prompt-injection-model.ts",
     "smoke:sdk": "bun scripts/smoke-sdk.ts",
+    "smoke:prompt-injection": "bun scripts/smoke-prompt-injection.ts",
     "smoke:layer2": "bun scripts/smoke-layer2.ts",
     "smoke:layer2:node": "bun run build && node scripts/smoke-layer2-built.mjs",
     "test:prompt-injection-model": "bun scripts/test-prompt-injection-model.ts",

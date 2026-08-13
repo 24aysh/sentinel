@@ -1,0 +1,21 @@
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+enabled: true
+
+metadata:
+  name: smoke-prompt-injection-only
+  version: 1
+
+defaults:
+  input_action: allow
+  input_execution_mode: parallel
+  runtime_failure_mode: closed
+  maximum_retries: 1
+
+input:
+  - id: block-prompt-injection
+    detector: prompt_injection
+    roles:
+      - user
+    action:
+      type: block
