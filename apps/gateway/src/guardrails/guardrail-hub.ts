@@ -1,14 +1,12 @@
 import type { ChatRequest, ChatResponse } from "../domain/chat.ts";
 import type { RequestContext } from "../domain/request-context.ts";
-import { evaluatePiiInput } from "./input/input-evaluator.ts";
+import { evaluateConfiguredInput } from "./input/input-evaluation-coordinator.ts";
 import type { PromptInjectionClassifier } from "./input/prompt-injection-classifier.ts";
 import type {
   GuardrailHub,
-  InputDetectorType,
   InputGuardrailResult,
   LoadedGuardrailPolicy,
   OutputGuardrailResult,
-  PromptInjectionInputPolicyRule,
 } from "./types.ts";
 
 function repairRequest(
@@ -51,107 +49,11 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
     request: ChatRequest,
     _context: RequestContext,
   ): Promise<InputGuardrailResult> {
-    const piiResult = evaluatePiiInput(request, this.policy);
-    if (piiResult.decision === "block") return piiResult;
-
-    const rules = this.policy.input.filter(
-      (rule): rule is PromptInjectionInputPolicyRule =>
-        rule.detector === "prompt_injection",
+    return evaluateConfiguredInput(
+      request,
+      this.policy,
+      this.promptInjectionClassifier,
     );
-    if (rules.length === 0) return piiResult;
-    if (!this.promptInjectionClassifier) {
-      throw new Error("Prompt-injection classifier was not configured.");
-    }
-
-    const selectedRoles = new Set(rules.flatMap((rule) => rule.roles));
-    const selectedMessages = piiResult.request.messages.flatMap(
-      (message, messageIndex) =>
-        selectedRoles.has(message.role)
-          ? [{ messageIndex, role: message.role, content: message.content }]
-          : [],
-    );
-    if (selectedMessages.length === 0) return piiResult;
-
-    let classification;
-    try {
-      classification =
-        await this.promptInjectionClassifier.classify(selectedMessages);
-      if (classification.decision === "detected") {
-        const selected = new Set(
-          selectedMessages.map(
-            ({ messageIndex, role }) => `${messageIndex}:${role}`,
-          ),
-        );
-        const findingIndexes = new Set<number>();
-        for (const finding of classification.findings) {
-          if (
-            !selected.has(`${finding.messageIndex}:${finding.role}`) ||
-            findingIndexes.has(finding.messageIndex)
-          ) {
-            throw new Error(
-              "Prompt-injection classifier returned invalid findings.",
-            );
-          }
-          findingIndexes.add(finding.messageIndex);
-        }
-      }
-    } catch (error) {
-      if (this.runtimeFailureMode === "closed") throw error;
-      return {
-        ...piiResult,
-        detectorTypes: mergeDetectorTypes(
-          piiResult.detectorTypes,
-          "prompt_injection",
-        ),
-        failedDetectorTypes: ["prompt_injection"],
-        promptInjectionModelId:
-          this.promptInjectionClassifier.identity.artifactId,
-      };
-    }
-
-    const classifierMetadata = {
-      detectorTypes: mergeDetectorTypes(
-        piiResult.detectorTypes,
-        "prompt_injection",
-      ),
-      promptInjectionModelId:
-        this.promptInjectionClassifier.identity.artifactId,
-      evaluatedMessageCount: classification.evaluatedMessageCount,
-      evaluatedWindowCount: classification.evaluatedWindowCount,
-    };
-    if (classification.decision === "allow") {
-      return { ...piiResult, ...classifierMetadata };
-    }
-    if (classification.decision === "limit_exceeded") {
-      return {
-        decision: "block",
-        findingCount: piiResult.findingCount,
-        ruleIds: [
-          ...new Set([...piiResult.ruleIds, ...rules.map(({ id }) => id)]),
-        ],
-        entityTypes: piiResult.entityTypes,
-        ...classifierMetadata,
-      };
-    }
-
-    const resolved = classification.findings.map((finding) => ({
-      finding,
-      rule: rules.find((rule) => rule.roles.includes(finding.role))!,
-    }));
-    const metadata = {
-      findingCount: piiResult.findingCount + resolved.length,
-      ruleIds: [
-        ...new Set([
-          ...piiResult.ruleIds,
-          ...resolved.map(({ rule }) => rule.id),
-        ]),
-      ],
-      entityTypes: piiResult.entityTypes,
-      ...classifierMetadata,
-    };
-    return resolved.some(({ rule }) => rule.action.type === "block")
-      ? { decision: "block", ...metadata }
-      : { ...piiResult, ...metadata };
   }
 
   async evaluateOutput(
@@ -192,11 +94,4 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
 
     return { decision: "block", ruleId: output.id };
   }
-}
-
-function mergeDetectorTypes(
-  current: readonly InputDetectorType[] | undefined,
-  next: InputDetectorType,
-): InputDetectorType[] {
-  return [...new Set([...(current ?? []), next])];
 }

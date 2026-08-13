@@ -16,6 +16,7 @@ export const PII_ENTITIES = [
 export type PiiEntity = (typeof PII_ENTITIES)[number];
 export type InputActionType = "allow" | "redact" | "block";
 export type InputDetectorType = "pii" | "prompt_injection";
+export type InputExecutionMode = "sequential" | "parallel";
 export type RuntimeFailureMode = "open" | "closed";
 
 export interface PolicyIdentity {
@@ -25,6 +26,7 @@ export interface PolicyIdentity {
 
 export interface PolicyDefaults {
   inputAction: InputActionType;
+  inputExecutionMode: InputExecutionMode;
   runtimeFailureMode: RuntimeFailureMode;
   maximumRetries: number;
 }
@@ -91,6 +93,7 @@ interface GuardrailResultMetadata {
   promptInjectionModelId?: string;
   evaluatedMessageCount?: number;
   evaluatedWindowCount?: number;
+  inputExecutionMode?: InputExecutionMode;
 }
 
 export type InputGuardrailResult =

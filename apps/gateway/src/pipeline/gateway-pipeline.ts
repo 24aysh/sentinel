@@ -11,6 +11,7 @@ import {
   type RequestContext,
 } from "../domain/request-context.ts";
 import type { GuardrailHub } from "../guardrails/types.ts";
+import { InputDetectorEvaluationError } from "../guardrails/input/input-evaluation-coordinator.ts";
 import { silentLogger, type Logger } from "../observability/logger.ts";
 import type { ModelProvider } from "../providers/model-provider.ts";
 import {
@@ -191,6 +192,7 @@ export class GatewayPipeline {
           promptInjectionModelId: inputResult.promptInjectionModelId,
           evaluatedMessageCount: inputResult.evaluatedMessageCount,
           evaluatedWindowCount: inputResult.evaluatedWindowCount,
+          inputExecutionMode: inputResult.inputExecutionMode,
         };
         lifecycle.record("input_guardrails_completed", {
           ...policyMetadata,
@@ -202,6 +204,10 @@ export class GatewayPipeline {
             "input",
             context,
             inputResult.failedDetectorTypes,
+            inputResult.decision === "block"
+              ? "blocked_by_other_detector"
+              : "fail_open",
+            inputResult.inputExecutionMode,
           );
         }
 
@@ -306,6 +312,15 @@ export class GatewayPipeline {
       return await evaluate();
     } catch (error) {
       if (this.guardrails!.runtimeFailureMode === "closed") {
+        if (error instanceof InputDetectorEvaluationError) {
+          this.logRuntimeFailure(
+            phase,
+            context,
+            error.failedDetectorTypes,
+            "fail_closed",
+            error.inputExecutionMode,
+          );
+        }
         throw new GatewayError(
           "GUARDRAIL_EVALUATION_FAILED",
           "The gateway could not evaluate the configured guardrails.",
@@ -344,15 +359,19 @@ export class GatewayPipeline {
     phase: "input" | "output",
     context: RequestContext,
     detectorTypes?: readonly string[],
+    action:
+      "fail_open" | "fail_closed" | "blocked_by_other_detector" = "fail_open",
+    inputExecutionMode?: "sequential" | "parallel",
   ): void {
     this.logger.error({
       event: "gateway.guardrail_runtime_failure",
       requestId: context.requestId,
       phase,
-      action: "fail_open",
+      action,
       policyName: this.guardrails!.identity.name,
       policyVersion: this.guardrails!.identity.version,
       ...(detectorTypes && { detectorTypes }),
+      ...(inputExecutionMode && { inputExecutionMode }),
     });
   }
 

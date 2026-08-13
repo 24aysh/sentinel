@@ -14,6 +14,7 @@ import { CompiledJsonSchemaValidator } from "../output/json-schema-validator.ts"
 import {
   PII_ENTITIES,
   type InputActionType,
+  type InputExecutionMode,
   type InputPolicyAction,
   type InputPolicyRule,
   type LoadedGuardrailPolicy,
@@ -144,6 +145,7 @@ function parseDefaults(value: unknown): PolicyDefaults {
       ? {}
       : object(value, "defaults", [
           "input_action",
+          "input_execution_mode",
           "runtime_failure_mode",
           "maximum_retries",
         ]);
@@ -153,6 +155,16 @@ function parseDefaults(value: unknown): PolicyDefaults {
       "allow",
       (item) =>
         oneOf(item, ["allow", "redact", "block"], "defaults.input_action"),
+    ),
+    inputExecutionMode: optional<InputExecutionMode>(
+      defaults.input_execution_mode,
+      "sequential",
+      (item) =>
+        oneOf(
+          item,
+          ["sequential", "parallel"],
+          "defaults.input_execution_mode",
+        ),
     ),
     runtimeFailureMode: optional<RuntimeFailureMode>(
       defaults.runtime_failure_mode,
@@ -414,6 +426,14 @@ export async function loadGuardrailPolicy(
   const metadata = object(policy.metadata, "metadata", ["name", "version"]);
   const defaults = parseDefaults(policy.defaults);
   const input = parseInputRules(policy.input);
+  if (
+    defaults.inputExecutionMode === "parallel" &&
+    !input.some((rule) => rule.detector === "prompt_injection")
+  ) {
+    fail(
+      "requires a prompt_injection input rule when defaults.input_execution_mode is parallel.",
+    );
+  }
   const output = parseOutputRule(policy.output, defaults);
   const ids = [...input.map(({ id }) => id), ...(output ? [output.id] : [])];
   if (new Set(ids).size !== ids.length) {

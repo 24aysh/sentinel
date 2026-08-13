@@ -1,6 +1,7 @@
 import type { GatewayErrorCode } from "../domain/errors.ts";
 import type { RequestContext } from "../domain/request-context.ts";
 import type { Logger } from "../observability/logger.ts";
+import type { InputExecutionMode } from "../guardrails/types.ts";
 
 export type LifecycleStage =
   | "received"
@@ -29,6 +30,7 @@ export interface LifecycleMetadata {
   promptInjectionModelId?: string;
   evaluatedMessageCount?: number;
   evaluatedWindowCount?: number;
+  inputExecutionMode?: InputExecutionMode;
   attempt?: number;
   maximumAttempts?: number;
 }

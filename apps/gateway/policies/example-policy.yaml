@@ -8,6 +8,7 @@ metadata:
 
 defaults:
   input_action: allow
+  input_execution_mode: sequential
   runtime_failure_mode: closed
   maximum_retries: 1
 

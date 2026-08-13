@@ -19,6 +19,7 @@ export type { RequestContext } from "./domain/request-context.ts";
 export type {
   GuardrailHub,
   InputDetectorType,
+  InputExecutionMode,
   InputGuardrailResult,
   OutputGuardrailResult,
   PolicyIdentity,
