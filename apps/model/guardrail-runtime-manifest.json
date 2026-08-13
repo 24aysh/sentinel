@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "artifactId": "prompt-injection-distilbert-full-31335f278603",
+  "runManifestFile": "run-manifest.json",
+  "metricsFile": "metrics.json",
+  "validationMetricsFile": "validation-metrics.json",
+  "sliceMetricsFile": "slice-metrics.json",
+  "modelFile": "onnx-model/model.onnx",
+  "configFile": "onnx-model/config.json",
+  "tokenizerFile": "onnx-model/tokenizer.json",
+  "tokenizerConfigFile": "onnx-model/tokenizer_config.json",
+  "labels": {
+    "0": "BENIGN",
+    "1": "PROMPT_INJECTION"
+  },
+  "positiveLabelId": 1,
+  "scoreFunction": "softmax",
+  "thresholdSource": "run-manifest.json",
+  "maxTokens": 256,
+  "overlapTokens": 64,
+  "maxSelectedUtf16CodeUnits": 50000,
+  "maxWindowsPerRequest": 32,
+  "maxBatchWindows": 8,
+  "expectedInputs": [
+    "input_ids",
+    "attention_mask"
+  ],
+  "expectedOutput": "logits",
+  "fileSha256": {
+    "run-manifest.json": "f42623c26d187731a879757100362ac7aeb562c210fd5a65a4e1aa5b479269ce",
+    "metrics.json": "76a433e7a6f13e85269dd746da3881060dfc1bd8a9ba2b19acbe7ac19432581b",
+    "validation-metrics.json": "d593c487e1f5fe6e120525d385ea5128aea88d75c246c56e1058ff995d866be3",
+    "slice-metrics.json": "5dfe4fb9ac2918f14feae48b40bea0124014021f0860bbdba87faeb4c031e4f0",
+    "onnx-model/config.json": "01b1440557783f86f3f119abe9e1ea14926bcaf267dcbd49d7b0242a681ba7d9",
+    "onnx-model/model.onnx": "31335f278603a91c1f668088ac2f3a62a26630e47014a58ef3d303429a6c467e",
+    "onnx-model/tokenizer.json": "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66",
+    "onnx-model/tokenizer_config.json": "a3c9410f27554c6e26af779fd147e536c6c5f9e5cb0e6b8f38ddaa25e1b0f6af",
+    "onnx-model/special_tokens_map.json": "5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a",
+    "onnx-model/vocab.txt": "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"
+  }
+}
