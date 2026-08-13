@@ -34,7 +34,7 @@
     },
     "apps/gateway": {
       "name": "@llm-gateway/sdk",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "dependencies": {
         "@huggingface/tokenizers": "0.1.3",
         "ajv": "^8.20.0",
