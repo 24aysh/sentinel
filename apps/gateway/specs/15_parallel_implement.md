@@ -883,7 +883,9 @@ No changes are planned for:
 | `tests/guardrail-hub.test.ts`                | Sequential compatibility and raw-input parallel behavior         |
 | `tests/guardrail-pipeline.test.ts`           | Provider calls, safe request, public errors, lifecycle, and logs |
 | `tests/model-gateway.test.ts`                | Construction remains conditional and mode is propagated          |
-| `tests/sdk-entry.test.ts`                    | Type/export and side-effect behavior remain stable               |
+
+Public exports and side-effect behavior are covered by the external Bun and
+Node consumers in `scripts/check-package.ts` instead of a duplicate unit test.
 
 ## 14. Detailed Test Plan
 
@@ -1188,11 +1190,9 @@ Expected commands from `apps/gateway` after implementation:
 ```bash
 bun test
 bun run check-types
-bun run test:pipeline
-bun run test:guardrails
 bun run check:package
 bun run seal:prompt-injection-model -- ../model
-bun run test:prompt-injection-model -- ../model
+bun run smoke:layer2 -- ../model
 bun run benchmark:input-guardrails -- ../model
 ```
 

@@ -253,18 +253,6 @@ bun test
 bun run check-types
 ```
 
-The retained deterministic testing scripts now use `ModelGateway` through the
-public SDK entry:
-
-```bash
-bun run test:pipeline
-bun run test:guardrails
-```
-
-`test:pipeline` verifies the no-policy class path. `test:guardrails` verifies
-YAML loading, expanded PII redaction, usage, and lifecycle events through
-`ModelGateway.create()`.
-
 Build the package and run external TypeScript, Bun, Node, clean-artifact, and
 side-effect checks:
 
@@ -278,12 +266,12 @@ After sealing the local model, run the deterministic Layer 2 smoke checks:
 
 ```bash
 bun run smoke:layer2 -- ../model
-bun run smoke:layer2:node -- ../model
 ```
 
-Both use a recording provider. They assert that a benign request reaches it
-and a direct injection does not. The Bun smoke also verifies that PII was
-redacted before provider dispatch. Neither command calls an external LLM.
+The command exercises both Bun source and the built Node package with a
+recording provider. It asserts that benign requests reach the provider, PII is
+redacted, and prompt-injection requests do not reach it. It does not call an
+external LLM.
 
 To compare warmed sequential and parallel input-guardrail latency using only
 synthetic fixtures:
@@ -294,37 +282,13 @@ bun run benchmark:input-guardrails -- ../model 10
 
 The benchmark prints aggregate latency, memory, and decision agreement only.
 
-## Real-provider SDK smoke
+## Manual prompt-injection smoke
 
 Copy and configure the example environment:
 
 ```bash
 cp .env.example .env
 ```
-
-Then run:
-
-```bash
-bun run smoke:sdk
-```
-
-The script constructs `ModelGateway` directly, prints the original prompt,
-sends one request, prints the first provider request after input guardrails,
-prints the assistant response, and reports request ID and duration.
-
-With `GUARDRAIL_POLICY_PATH=policies/example-policy.yaml` and `enabled: true`,
-set `PROMPT_INJECTION_MODEL_PATH=../model`; the provider request contains
-`<EMAIL>` and the classifier runs in shadow mode. Compare it with the no-policy
-path:
-
-```bash
-GUARDRAIL_POLICY_PATH= bun run smoke:sdk
-```
-
-The second request contains the original synthetic email. No local gateway
-server should be started for either command.
-
-### Manual prompt-injection smoke
 
 Run the same editable prompt with the prompt-injection-only policy:
 
@@ -340,9 +304,8 @@ bun run smoke:prompt-injection -- pi-pii
 
 Set `PROMPT_INJECTION_MODEL_PATH` if the ONNX model is not in `apps/model`.
 The script reports `ALLOWED` and prints the LLM response, or reports `DECLINED`
-with the gateway error code and reason. Provider configuration uses the same
-`MODEL_BASE_URL`, `MODEL_API_KEY`, `MODEL_DEFAULT`, and `MODEL_TIMEOUT_MS`
-variables as `smoke:sdk`.
+with the gateway error code and reason. It uses `MODEL_BASE_URL`,
+`MODEL_API_KEY`, `MODEL_DEFAULT`, and `MODEL_TIMEOUT_MS` for the provider.
 
 ## Current limitations
 

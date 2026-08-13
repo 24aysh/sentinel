@@ -9,6 +9,39 @@ import {
   type RequestContext,
 } from "../src/index.ts";
 
+async function run(command: string[], label: string): Promise<void> {
+  const child = Bun.spawn(command, {
+    cwd: resolve(import.meta.dir, ".."),
+    env: { ...Bun.env },
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if ((await child.exited) !== 0) throw new Error(`${label} failed.`);
+}
+
+const modelPath = resolve(
+  process.argv[2] ?? resolve(import.meta.dir, "../../model"),
+);
+
+if (!process.argv.includes("--source-only")) {
+  await run(
+    [
+      process.execPath,
+      resolve(import.meta.dir, "smoke-layer2.ts"),
+      modelPath,
+      "--source-only",
+    ],
+    "Bun source smoke",
+  );
+  await run([process.execPath, "run", "build"], "Gateway build");
+  await run(
+    ["node", resolve(import.meta.dir, "smoke-layer2-built.mjs"), modelPath],
+    "Node package smoke",
+  );
+  process.exit(0);
+}
+
 class RecordingProvider implements ModelProvider {
   readonly requests: ChatRequest[] = [];
 
@@ -32,9 +65,6 @@ class RecordingProvider implements ModelProvider {
   }
 }
 
-const modelPath = resolve(
-  process.argv[2] ?? resolve(import.meta.dir, "../../model"),
-);
 const policyPath = resolve(
   import.meta.dir,
   "../policies/prompt-injection-enforce-policy.yaml",
