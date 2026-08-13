@@ -5,12 +5,10 @@ A TypeScript-first, in-process model gateway. Applications instantiate
 chat-completion API directly. The package does not start or expose an HTTP
 server.
 
-The input guardrail detects emails, phone numbers, IP addresses, API keys,
-JWTs, private keys, AWS/Google/Azure credentials, credit cards, and database
-connection strings. It combines bounded patterns with structural validation;
-cards use Luhn checks and generic secrets require contextual labels and entropy.
-IBANs and national identifiers are not included yet. Output guardrails provide
-strict JSON Schema validation and bounded repair retries.
+Layer 1 detects and redacts or blocks supported PII. Layer 2 can run the
+fine-tuned prompt-injection classifier locally from a sealed ONNX artifact
+before a request reaches the provider. Output guardrails provide strict JSON
+Schema validation and bounded repair retries.
 
 ## Requirements
 
@@ -51,6 +49,7 @@ const gateway = await ModelGateway.create({
   }),
   defaultModel: "gpt-4.1-mini",
   policyPath: "./policies/example-policy.yaml",
+  promptInjectionModelPath: "../model",
 });
 
 const result = await gateway.chat.completions.create({
@@ -78,11 +77,17 @@ const gateway = await ModelGateway.create({
   defaultModel: "model-name",
   policyPath: "policies/example-policy.yaml",
   policyWorkingDirectory: process.cwd(),
+  promptInjectionModelPath: "../model",
 });
 ```
 
 Omit `policyPath` to run without guardrails. A policy with `enabled: false` is
 loaded and validated but is not attached to the gateway.
+
+`promptInjectionModelPath` is required only when an enabled policy has a
+`prompt_injection` rule. It points to the local artifact directory, not directly
+to `model.onnx`. The path resolves against `policyWorkingDirectory` when that
+option is supplied. No environment or network fallback exists inside the SDK.
 
 Use the synchronous constructor when dependencies are already created:
 
@@ -143,8 +148,10 @@ enabled: true
 - `false`: the policy is validated but prompts and responses bypass guardrails.
 - No `policyPath`: no policy file is loaded.
 
-The checked-in policy redacts all supported input entities. Its optional output
-schema rule is included as a commented example.
+The checked-in example policy redacts all supported input entities, then runs
+the local classifier on user messages in shadow mode (`action.type: allow`).
+Use `policies/pii-policy.yaml` when only Layer 1 is wanted. The optional output
+schema rule remains a commented example.
 
 Input rules use these entity names:
 
@@ -166,6 +173,40 @@ active, validate JWT signatures, or classify output. Credential formats are
 intentionally bounded to distinctive API-key prefixes, contextual generic
 secrets, AWS access keys, Google API keys/service-account key IDs, Azure Storage
 keys/SAS tokens, supported PEM keys, and common database URI/SQL Server DSNs.
+
+## Local prompt-injection model
+
+Seal the exported model once after training or whenever any artifact file
+changes:
+
+```bash
+cd apps/gateway
+bun run seal:prompt-injection-model -- ../model
+```
+
+This validates the approved full training run, labels, tokenizer IDs, FP32
+DistilBERT contract, and agreement between the recorded thresholds. It hashes
+the required files and writes
+`apps/model/guardrail-runtime-manifest.json`. Gateway startup recomputes those
+hashes, reads the threshold from the hashed `run-manifest.json`, creates the CPU
+ONNX session, and warms it before `ModelGateway.create()` resolves. There is no
+hard-coded `0.5` fallback and policy YAML cannot override the threshold.
+
+Prompt-injection rules have a deliberately small shape:
+
+```yaml
+- id: inspect-user-prompt-injection
+  detector: prompt_injection
+  roles: [user]
+  action:
+    type: allow # shadow; use block for enforcement
+```
+
+Layer 1 always runs first, so Layer 2 sees redacted content. PII blocks skip
+inference. A Layer 2 block returns the existing generic
+`INPUT_GUARDRAIL_BLOCKED` error and the provider is not called. Selected input
+is bounded to 50,000 UTF-16 code units and 32 overlapping 256-token windows;
+exceeding either safety limit blocks the request.
 
 ## Lifecycle
 
@@ -213,6 +254,17 @@ bun run check:package
 
 No deterministic test requires a listener, API key, or network connection.
 
+After sealing the local model, run the deterministic Layer 2 smoke checks:
+
+```bash
+bun run smoke:layer2 -- ../model
+bun run smoke:layer2:node -- ../model
+```
+
+Both use a recording provider. They assert that a benign request reaches it
+and a direct injection does not. The Bun smoke also verifies that PII was
+redacted before provider dispatch. Neither command calls an external LLM.
+
 ## Real-provider SDK smoke
 
 Copy and configure the example environment:
@@ -232,7 +284,9 @@ sends one request, prints the first provider request after input guardrails,
 prints the assistant response, and reports request ID and duration.
 
 With `GUARDRAIL_POLICY_PATH=policies/example-policy.yaml` and `enabled: true`,
-the provider request contains `<EMAIL>`. Compare it with the no-policy path:
+set `PROMPT_INJECTION_MODEL_PATH=../model`; the provider request contains
+`<EMAIL>` and the classifier runs in shadow mode. Compare it with the no-policy
+path:
 
 ```bash
 GUARDRAIL_POLICY_PATH= bun run smoke:sdk
@@ -246,9 +300,12 @@ server should be started for either command.
 - The package is private and not published to a registry.
 - Chat completions are text-only and non-streaming.
 - Only an OpenAI-compatible provider adapter is included.
-- Guardrails are limited to local PII detection and JSON Schema validation.
+- The prompt-injection model is a classifier, not a substitute for
+  authorization, least privilege, or tool isolation.
+- The ONNX weights stay outside the SDK package and must be deployed separately.
+- Native inference supports server-side Bun/Node platforms supported by
+  `onnxruntime-node`; browser and edge runtimes are not supported.
 - Policies are loaded during construction and do not hot reload.
 - There is no provider routing or fallback.
-- Browser and edge runtimes are not supported.
 - Prompts, responses, and lifecycle events are not persisted.
 - The package does not include an HTTP server or remote HTTP client.
