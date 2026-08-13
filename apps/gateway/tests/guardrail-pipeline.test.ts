@@ -333,8 +333,116 @@ describe("guardrail-enabled GatewayPipeline", () => {
     expect(JSON.stringify(logger.records)).not.toContain("private@example.com");
   });
 
+  test("runs parallel input evaluation on raw text but dispatches redacted text", async () => {
+    const provider = new SequencedProvider([response("safe")]);
+    let classifiedContent = "";
+    const promptInjectionClassifier: PromptInjectionClassifier = {
+      identity: classifierIdentity,
+      async classify(messages) {
+        classifiedContent = messages[0]?.content ?? "";
+        return {
+          decision: "allow",
+          evaluatedMessageCount: 1,
+          evaluatedWindowCount: 1,
+        };
+      },
+    };
+    const pipeline = new GatewayPipeline({
+      provider,
+      defaultModel: "test-model",
+      guardrails: new ConfiguredGuardrailHub(
+        createTestPolicy({
+          inputExecutionMode: "parallel",
+          input: [
+            {
+              id: "redact-email",
+              detector: "pii",
+              entities: ["EMAIL"],
+              action: { type: "redact" },
+            },
+            {
+              id: "inspect-injection",
+              detector: "prompt_injection",
+              roles: ["user"],
+              action: { type: "block" },
+            },
+          ],
+        }),
+        promptInjectionClassifier,
+      ),
+    });
+
+    const result = await pipeline.execute({
+      messages: [{ role: "user", content: "Email private@example.com" }],
+    });
+
+    expect(classifiedContent).toBe("Email private@example.com");
+    expect(provider.calls[0]?.messages[0]?.content).toBe("Email <EMAIL>");
+    expect(
+      result.lifecycle.find(
+        ({ stage }) => stage === "input_guardrails_completed",
+      ),
+    ).toMatchObject({
+      decision: "redact",
+      inputExecutionMode: "parallel",
+    });
+  });
+
+  test("logs a peer failure without overriding a parallel PII block", async () => {
+    const provider = new SequencedProvider([response("unused")]);
+    const logger = new RecordingLogger();
+    const promptInjectionClassifier: PromptInjectionClassifier = {
+      identity: classifierIdentity,
+      async classify() {
+        throw new Error("private native failure");
+      },
+    };
+    const pipeline = new GatewayPipeline({
+      provider,
+      defaultModel: "test-model",
+      logger,
+      guardrails: new ConfiguredGuardrailHub(
+        createTestPolicy({
+          inputExecutionMode: "parallel",
+          input: [
+            {
+              id: "block-email",
+              detector: "pii",
+              entities: ["EMAIL"],
+              action: { type: "block" },
+            },
+            {
+              id: "inspect-injection",
+              detector: "prompt_injection",
+              roles: ["user"],
+              action: { type: "block" },
+            },
+          ],
+        }),
+        promptInjectionClassifier,
+      ),
+    });
+
+    await expect(
+      pipeline.execute({
+        messages: [{ role: "user", content: "private@example.com" }],
+      }),
+    ).rejects.toMatchObject({ code: "INPUT_GUARDRAIL_BLOCKED" });
+    expect(provider.calls).toHaveLength(0);
+    expect(logger.records).toContainEqual(
+      expect.objectContaining({
+        event: "gateway.guardrail_runtime_failure",
+        action: "blocked_by_other_detector",
+        detectorTypes: ["prompt_injection"],
+        inputExecutionMode: "parallel",
+      }),
+    );
+    expect(JSON.stringify(logger.records)).not.toContain("private native");
+  });
+
   test("fails closed on a prompt-injection inference error", async () => {
     const provider = new SequencedProvider([response("unused")]);
+    const logger = new RecordingLogger();
     const promptInjectionClassifier: PromptInjectionClassifier = {
       identity: classifierIdentity,
       async classify() {
@@ -344,6 +452,7 @@ describe("guardrail-enabled GatewayPipeline", () => {
     const pipeline = new GatewayPipeline({
       provider,
       defaultModel: "test-model",
+      logger,
       guardrails: new ConfiguredGuardrailHub(
         createTestPolicy({
           input: [
@@ -369,6 +478,15 @@ describe("guardrail-enabled GatewayPipeline", () => {
       message: "The gateway could not evaluate the configured guardrails.",
     });
     expect(provider.calls).toHaveLength(0);
+    expect(logger.records).toContainEqual(
+      expect.objectContaining({
+        event: "gateway.guardrail_runtime_failure",
+        action: "fail_closed",
+        detectorTypes: ["prompt_injection"],
+        inputExecutionMode: "sequential",
+      }),
+    );
+    expect(JSON.stringify(logger.records)).not.toContain("private native");
   });
 
   test("blocks invalid output after the retry budget", async () => {

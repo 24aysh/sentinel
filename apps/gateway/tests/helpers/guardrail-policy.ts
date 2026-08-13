@@ -1,6 +1,7 @@
 import { CompiledJsonSchemaValidator } from "../../src/guardrails/output/json-schema-validator.ts";
 import type {
   InputActionType,
+  InputExecutionMode,
   InputPolicyRule,
   LoadedGuardrailPolicy,
   OutputFailureAction,
@@ -10,6 +11,7 @@ import type {
 interface PolicyOptions {
   input?: InputPolicyRule[];
   inputAction?: InputActionType;
+  inputExecutionMode?: InputExecutionMode;
   runtimeFailureMode?: RuntimeFailureMode;
   output?: {
     schema: unknown;
@@ -25,6 +27,7 @@ export function createTestPolicy(
     identity: { name: "test-policy", version: 1 },
     defaults: {
       inputAction: options.inputAction ?? "allow",
+      inputExecutionMode: options.inputExecutionMode ?? "sequential",
       runtimeFailureMode: options.runtimeFailureMode ?? "closed",
       maximumRetries: 1,
     },

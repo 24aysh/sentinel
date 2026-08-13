@@ -72,6 +72,7 @@ describe("ConfiguredGuardrailHub input evaluation", () => {
     const result = await hub.evaluateInput(original, context);
 
     expect(result.decision).toBe("redact");
+    expect(result.inputExecutionMode).toBe("sequential");
     if (result.decision === "redact") {
       expect(result.request.messages[0]?.content).toBe(
         "Use <EMAIL>, <PHONE_NUMBER>, and <CREDIT_CARD>.",

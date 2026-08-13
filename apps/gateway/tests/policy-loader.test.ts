@@ -63,6 +63,7 @@ metadata:
   version: 3
 defaults:
   input_action: redact
+  input_execution_mode: sequential
   runtime_failure_mode: open
   maximum_retries: 2
 input:
@@ -87,6 +88,7 @@ output:
     expect(policy.enabled).toBe(false);
     expect(policy.defaults).toEqual({
       inputAction: "redact",
+      inputExecutionMode: "sequential",
       runtimeFailureMode: "open",
       maximumRetries: 2,
     });
@@ -117,6 +119,7 @@ metadata:
 
     expect(policy.defaults).toEqual({
       inputAction: "allow",
+      inputExecutionMode: "sequential",
       runtimeFailureMode: "closed",
       maximumRetries: 1,
     });

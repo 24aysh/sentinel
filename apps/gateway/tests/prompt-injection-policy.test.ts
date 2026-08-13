@@ -35,6 +35,82 @@ afterAll(async () => {
 });
 
 describe("prompt-injection policy rules", () => {
+  test("loads explicit parallel execution with a prompt-injection rule", async () => {
+    const path = await writePolicy(`
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+metadata: { name: prompt-injection-test, version: 1 }
+defaults:
+  input_execution_mode: parallel
+input:
+  - id: block-user
+    detector: prompt_injection
+    roles: [user]
+    action: { type: block }
+`);
+
+    expect((await loadGuardrailPolicy(path)).defaults.inputExecutionMode).toBe(
+      "parallel",
+    );
+  });
+
+  test.each(["concurrent", "PARALLEL", true, 1, null])(
+    "rejects invalid execution mode %p",
+    async (mode) => {
+      const path = await writePolicy(`
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+metadata: { name: prompt-injection-test, version: 1 }
+defaults:
+  input_execution_mode: ${JSON.stringify(mode)}
+input:
+  - id: block-user
+    detector: prompt_injection
+    roles: [user]
+    action: { type: block }
+`);
+
+      await expect(loadGuardrailPolicy(path)).rejects.toBeInstanceOf(
+        ConfigurationError,
+      );
+    },
+  );
+
+  test("rejects parallel execution without a prompt-injection rule", async () => {
+    const path = await writePolicy(`
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+metadata: { name: prompt-injection-test, version: 1 }
+defaults:
+  input_execution_mode: parallel
+input:
+  - id: redact-email
+    detector: pii
+    entities: [EMAIL]
+    action: { type: redact }
+`);
+
+    await expect(loadGuardrailPolicy(path)).rejects.toBeInstanceOf(
+      ConfigurationError,
+    );
+  });
+
+  test("validates parallel applicability when the policy is disabled", async () => {
+    const path = await writePolicy(`
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+enabled: false
+metadata: { name: prompt-injection-test, version: 1 }
+defaults:
+  input_execution_mode: parallel
+input: []
+`);
+
+    await expect(loadGuardrailPolicy(path)).rejects.toBeInstanceOf(
+      ConfigurationError,
+    );
+  });
+
   test("loads allow and block rules without adding a threshold", async () => {
     const path = await writePolicy(
       policy(`
