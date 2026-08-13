@@ -10,8 +10,12 @@ import {
   resolveRequestId,
   type RequestContext,
 } from "../domain/request-context.ts";
-import type { GuardrailHub } from "../guardrails/types.ts";
 import { InputDetectorEvaluationError } from "../guardrails/input/input-evaluation-coordinator.ts";
+import type {
+  GuardrailHub,
+  InputDetectorType,
+  InputExecutionMode,
+} from "../guardrails/types.ts";
 import { silentLogger, type Logger } from "../observability/logger.ts";
 import type { ModelProvider } from "../providers/model-provider.ts";
 import {
@@ -358,10 +362,10 @@ export class GatewayPipeline {
   private logRuntimeFailure(
     phase: "input" | "output",
     context: RequestContext,
-    detectorTypes?: readonly string[],
+    detectorTypes?: readonly InputDetectorType[],
     action:
       "fail_open" | "fail_closed" | "blocked_by_other_detector" = "fail_open",
-    inputExecutionMode?: "sequential" | "parallel",
+    inputExecutionMode?: InputExecutionMode,
   ): void {
     this.logger.error({
       event: "gateway.guardrail_runtime_failure",

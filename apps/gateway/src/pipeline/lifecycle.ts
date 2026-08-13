@@ -1,7 +1,11 @@
 import type { GatewayErrorCode } from "../domain/errors.ts";
 import type { RequestContext } from "../domain/request-context.ts";
+import type {
+  InputDetectorType,
+  InputExecutionMode,
+  PiiEntity,
+} from "../guardrails/types.ts";
 import type { Logger } from "../observability/logger.ts";
-import type { InputExecutionMode } from "../guardrails/types.ts";
 
 export type LifecycleStage =
   | "received"
@@ -24,9 +28,9 @@ export interface LifecycleMetadata {
   decision?: LifecycleDecision;
   findingCount?: number;
   ruleIds?: string[];
-  entityTypes?: string[];
-  detectorTypes?: string[];
-  failedDetectorTypes?: string[];
+  entityTypes?: PiiEntity[];
+  detectorTypes?: InputDetectorType[];
+  failedDetectorTypes?: InputDetectorType[];
   promptInjectionModelId?: string;
   evaluatedMessageCount?: number;
   evaluatedWindowCount?: number;

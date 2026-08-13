@@ -26,10 +26,7 @@ export class InputDetectorEvaluationError extends Error {
   }
 }
 
-type PiiEvaluator = (
-  request: ChatRequest,
-  policy: LoadedGuardrailPolicy,
-) => InputGuardrailResult;
+type PiiEvaluator = typeof evaluatePiiInput;
 
 function fulfilled<T>(value: T): DetectorOutcome<T> {
   return { status: "fulfilled", value };
@@ -38,16 +35,6 @@ function fulfilled<T>(value: T): DetectorOutcome<T> {
 async function settle<T>(promise: Promise<T>): Promise<DetectorOutcome<T>> {
   try {
     return fulfilled(await promise);
-  } catch {
-    return { status: "rejected" };
-  }
-}
-
-function settlePii(
-  evaluate: () => InputGuardrailResult,
-): DetectorOutcome<InputGuardrailResult> {
-  try {
-    return fulfilled(evaluate());
   } catch {
     return { status: "rejected" };
   }
@@ -192,8 +179,8 @@ async function evaluateParallelInput(
   const promptInjectionTask = classifier
     ? settle(evaluatePromptInjectionInput(request, rules, classifier))
     : Promise.resolve({ status: "rejected" } as const);
-  const piiTask = Promise.resolve().then(() =>
-    settlePii(() => evaluatePii(request, policy)),
+  const piiTask = settle(
+    Promise.resolve().then(() => evaluatePii(request, policy)),
   );
   const [promptInjection, pii] = await Promise.all([
     promptInjectionTask,

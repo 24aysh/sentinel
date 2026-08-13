@@ -9,10 +9,10 @@ import type {
   OutputGuardrailResult,
   RuntimeFailureMode,
 } from "../src/guardrails/types.ts";
-import type { LogRecord, Logger } from "../src/observability/logger.ts";
 import { GatewayPipeline } from "../src/pipeline/gateway-pipeline.ts";
 import type { ModelProvider } from "../src/providers/model-provider.ts";
 import { createTestPolicy } from "./helpers/guardrail-policy.ts";
+import { RecordingLogger } from "./helpers/recording-logger.ts";
 
 function response(content: string, includeUsage = true): ChatResponse {
   const result: ChatResponse = {
@@ -52,16 +52,6 @@ class SequencedProvider implements ModelProvider {
       throw new Error("Unexpected provider call");
     }
     return structuredClone(next);
-  }
-}
-
-class RecordingLogger implements Logger {
-  readonly records: LogRecord[] = [];
-  info(record: LogRecord): void {
-    this.records.push(record);
-  }
-  error(record: LogRecord): void {
-    this.records.push(record);
   }
 }
 

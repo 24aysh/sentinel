@@ -1,22 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { ConfigurationError } from "../src/domain/errors.ts";
 import { ConfiguredGuardrailHub } from "../src/guardrails/guardrail-hub.ts";
-import { ModelGateway } from "../src/model-gateway.ts";
-import type { LogRecord, Logger } from "../src/observability/logger.ts";
+import { ConfigurationError, ModelGateway } from "../src/index.ts";
 import { createTestPolicy } from "./helpers/guardrail-policy.ts";
 import { FakeProvider } from "./helpers/fake-provider.ts";
-
-class RecordingLogger implements Logger {
-  readonly records: LogRecord[] = [];
-
-  info(record: LogRecord): void {
-    this.records.push(record);
-  }
-
-  error(record: LogRecord): void {
-    this.records.push(record);
-  }
-}
+import { RecordingLogger } from "./helpers/recording-logger.ts";
 
 describe("ModelGateway SDK", () => {
   test("constructs stable resources and completes through an injected provider", async () => {

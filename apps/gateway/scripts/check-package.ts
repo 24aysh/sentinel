@@ -151,8 +151,24 @@ result.response.choices[0]?.message.content;
   await writeFile(
     join(consumerDirectory, "consumer.mjs"),
     `
-import { ModelGateway } from "@llm-gateway/sdk";
+import {
+  ConfigurationError,
+  GatewayError,
+  ModelGateway,
+  OpenAICompatibleProvider,
+} from "@llm-gateway/sdk";
 import { writeFile } from "node:fs/promises";
+
+for (const exportedClass of [
+  ConfigurationError,
+  GatewayError,
+  ModelGateway,
+  OpenAICompatibleProvider,
+]) {
+  if (typeof exportedClass !== "function") {
+    throw new Error("The package is missing a documented class export.");
+  }
+}
 
 class FakeProvider {
   async complete(request, _context) {

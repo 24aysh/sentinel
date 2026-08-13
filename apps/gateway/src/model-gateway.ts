@@ -91,15 +91,10 @@ export class ModelGateway {
     const requiresPromptInjectionModel =
       policy?.enabled === true &&
       policy.input.some((rule) => rule.detector === "prompt_injection");
-    if (!policy && promptInjectionModelPath) {
-      throw new ConfigurationError(
-        "promptInjectionModelPath requires an enabled prompt_injection policy rule.",
-      );
-    }
     if (
-      policy?.enabled === true &&
+      promptInjectionModelPath &&
       !requiresPromptInjectionModel &&
-      promptInjectionModelPath
+      policy?.enabled !== false
     ) {
       throw new ConfigurationError(
         "promptInjectionModelPath requires an enabled prompt_injection policy rule.",
