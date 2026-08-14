@@ -1,7 +1,10 @@
 import type { ChatRequest, ChatResponse } from "../domain/chat.ts";
-import { GatewayError } from "../domain/errors.ts";
+import { ConfigurationError, GatewayError } from "../domain/errors.ts";
 import type { RequestContext } from "../domain/request-context.ts";
-import type { ModelProvider } from "./model-provider.ts";
+import type {
+  ModelProvider,
+  ProviderCompletionOptions,
+} from "./model-provider.ts";
 
 export type FetchImplementation = (
   ...args: Parameters<typeof fetch>
@@ -12,6 +15,7 @@ export interface OpenAICompatibleProviderOptions {
   apiKey?: string;
   timeoutMs: number;
   fetch?: FetchImplementation;
+  structuredOutputMode?: "json_schema" | "disabled";
 }
 
 type UnknownRecord = Record<string, unknown>;
@@ -39,7 +43,11 @@ function invalidResponse(
   throw new GatewayError("INVALID_MODEL_RESPONSE", message, 502);
 }
 
-function toProviderRequest(request: ChatRequest) {
+function toProviderRequest(
+  request: ChatRequest,
+  options: ProviderCompletionOptions | undefined,
+  structuredOutputMode: "json_schema" | "disabled",
+) {
   return {
     model: request.model,
     messages: request.messages,
@@ -50,6 +58,13 @@ function toProviderRequest(request: ChatRequest) {
     ...(request.maxTokens !== undefined && {
       max_tokens: request.maxTokens,
     }),
+    ...(structuredOutputMode === "json_schema" &&
+      options?.outputJsonSchema && {
+        response_format: {
+          type: "json_schema",
+          json_schema: options.outputJsonSchema,
+        },
+      }),
   };
 }
 
@@ -126,22 +141,34 @@ export class OpenAICompatibleProvider implements ModelProvider {
   private readonly apiKey?: string;
   private readonly timeoutMs: number;
   private readonly fetchImplementation: FetchImplementation;
+  private readonly structuredOutputMode: "json_schema" | "disabled";
 
   constructor({
     baseUrl,
     apiKey,
     timeoutMs,
     fetch: fetchImplementation,
+    structuredOutputMode = "json_schema",
   }: OpenAICompatibleProviderOptions) {
+    if (
+      structuredOutputMode !== "json_schema" &&
+      structuredOutputMode !== "disabled"
+    ) {
+      throw new ConfigurationError(
+        "structuredOutputMode must be json_schema or disabled.",
+      );
+    }
     this.endpoint = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
     this.apiKey = apiKey;
     this.timeoutMs = timeoutMs;
     this.fetchImplementation = fetchImplementation ?? globalThis.fetch;
+    this.structuredOutputMode = structuredOutputMode;
   }
 
   async complete(
     request: ChatRequest,
     _context: RequestContext,
+    options?: ProviderCompletionOptions,
   ): Promise<ChatResponse> {
     const headers = new Headers({ "content-type": "application/json" });
     if (this.apiKey) {
@@ -153,7 +180,9 @@ export class OpenAICompatibleProvider implements ModelProvider {
       response = await this.fetchImplementation(this.endpoint, {
         method: "POST",
         headers,
-        body: JSON.stringify(toProviderRequest(request)),
+        body: JSON.stringify(
+          toProviderRequest(request, options, this.structuredOutputMode),
+        ),
         signal: AbortSignal.timeout(this.timeoutMs),
       });
     } catch (error) {

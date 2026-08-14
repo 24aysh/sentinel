@@ -3,6 +3,7 @@ import type { RequestContext } from "../domain/request-context.ts";
 import type {
   InputDetectorType,
   InputExecutionMode,
+  OutputViolationType,
   PiiEntity,
 } from "../guardrails/types.ts";
 import type { Logger } from "../observability/logger.ts";
@@ -37,6 +38,7 @@ export interface LifecycleMetadata {
   inputExecutionMode?: InputExecutionMode;
   attempt?: number;
   maximumAttempts?: number;
+  violationType?: OutputViolationType;
 }
 
 export interface LifecycleEvent extends LifecycleMetadata {

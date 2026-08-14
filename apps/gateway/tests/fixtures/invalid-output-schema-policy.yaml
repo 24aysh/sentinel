@@ -1,0 +1,12 @@
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+metadata:
+  name: invalid-output-schema
+  version: 1
+output:
+  - id: invalid-output
+    validator: json_schema
+    schema:
+      type: array
+    on_failure:
+      type: block

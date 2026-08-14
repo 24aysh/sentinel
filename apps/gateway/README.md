@@ -174,6 +174,48 @@ intentionally bounded to distinctive API-key prefixes, contextual generic
 secrets, AWS access keys, Google API keys/service-account key IDs, Azure Storage
 keys/SAS tokens, supported PEM keys, and common database URI/SQL Server DSNs.
 
+## Structured output guardrail
+
+An output rule accepts exactly one schema source. Keep larger schemas in a
+relative JSON file with `schema_ref`, or declare an object schema inline:
+
+```yaml
+output:
+  - id: require-json-result
+    validator: json_schema
+    schema:
+      type: object
+      properties:
+        status: { type: string, enum: [ok, error] }
+      required: [status]
+      additionalProperties: false
+    on_failure:
+      type: retry
+      maximum_retries: 1
+```
+
+Schemas are compiled during `ModelGateway.create()`. Malformed, unsupported,
+externally referenced, or non-object schemas prevent startup and emit a
+sanitized `gateway.guardrail_policy_rejected` record when a logger is supplied.
+Schema or compiler details are not logged.
+
+The OpenAI-compatible provider sends enabled output schemas through Chat
+Completions native Structured Outputs (`response_format.type: json_schema`,
+`strict: true`). The gateway still validates every returned choice locally and
+repairs or blocks invalid output, so upstream constraint support is never the
+sole enforcement boundary. For a compatible endpoint that does not implement
+native JSON Schema output, disable only the upstream constraint while retaining
+local validation:
+
+```ts
+const provider = new OpenAICompatibleProvider({
+  baseUrl,
+  apiKey,
+  timeoutMs: 30_000,
+  structuredOutputMode: "disabled",
+});
+```
+
 ## Local prompt-injection model
 
 Seal the exported model once after training or whenever any artifact file

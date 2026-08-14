@@ -4,15 +4,28 @@ import Ajv2020, {
 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 
+const DRAFT_2020_12_SCHEMA = "https://json-schema.org/draft/2020-12/schema";
+
 export class CompiledJsonSchemaValidator {
   private readonly validateFunction: ValidateFunction;
 
   constructor(schema: unknown) {
     if (
-      typeof schema !== "boolean" &&
-      (typeof schema !== "object" || schema === null || Array.isArray(schema))
+      typeof schema !== "object" ||
+      schema === null ||
+      Array.isArray(schema)
     ) {
-      throw new TypeError("A JSON Schema must be an object or boolean.");
+      throw new TypeError("An output JSON Schema must be an object.");
+    }
+
+    const root = schema as Record<string, unknown>;
+    if (root.type !== "object") {
+      throw new TypeError(
+        "An output JSON Schema must explicitly declare an object root.",
+      );
+    }
+    if (root.$schema !== undefined && root.$schema !== DRAFT_2020_12_SCHEMA) {
+      throw new TypeError("An output JSON Schema must use Draft 2020-12.");
     }
 
     const ajv = new Ajv2020({

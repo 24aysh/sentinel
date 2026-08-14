@@ -192,6 +192,54 @@ describe("ModelGateway SDK", () => {
     ).rejects.toBeInstanceOf(ConfigurationError);
   });
 
+  test("logs a sanitized malformed output schema rejection", async () => {
+    const logger = new RecordingLogger();
+
+    await expect(
+      ModelGateway.create({
+        provider: new FakeProvider(),
+        defaultModel: "test-model",
+        policyPath: "fixtures/invalid-output-schema-policy.yaml",
+        policyWorkingDirectory: import.meta.dir,
+        logger,
+      }),
+    ).rejects.toMatchObject({
+      name: "InvalidOutputSchemaConfigurationError",
+      message:
+        "GUARDRAIL_POLICY_PATH contains an invalid or unsupported output schema.",
+    });
+
+    expect(logger.records).toEqual([
+      {
+        event: "gateway.guardrail_policy_rejected",
+        phase: "startup",
+        reasonCode: "invalid_output_schema",
+      },
+    ]);
+    expect(JSON.stringify(logger.records)).not.toContain("invalid-output");
+  });
+
+  test("does not let a throwing logger mask a malformed schema", async () => {
+    await expect(
+      ModelGateway.create({
+        provider: new FakeProvider(),
+        defaultModel: "test-model",
+        policyPath: "fixtures/invalid-output-schema-policy.yaml",
+        policyWorkingDirectory: import.meta.dir,
+        logger: {
+          info() {},
+          error() {
+            throw new Error("logger failed");
+          },
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: "InvalidOutputSchemaConfigurationError",
+      message:
+        "GUARDRAIL_POLICY_PATH contains an invalid or unsupported output schema.",
+    });
+  });
+
   test("keeps concurrent request context and lifecycle state isolated", async () => {
     const gateway = new ModelGateway({
       provider: new FakeProvider(),

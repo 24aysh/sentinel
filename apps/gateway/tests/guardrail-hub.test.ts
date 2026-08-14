@@ -399,7 +399,11 @@ describe("ConfiguredGuardrailHub output evaluation", () => {
           context,
           2,
         ),
-      ).toEqual({ decision: "block", ruleId: "test-output" });
+      ).toEqual({
+        decision: "block",
+        ruleId: "test-output",
+        violationType: "invalid_json",
+      });
     }
   });
 
@@ -416,6 +420,10 @@ describe("ConfiguredGuardrailHub output evaluation", () => {
 
     expect(
       await hub.evaluateOutput(request("check"), multiple, context, 1),
-    ).toEqual({ decision: "block", ruleId: "test-output" });
+    ).toEqual({
+      decision: "block",
+      ruleId: "test-output",
+      violationType: "schema_mismatch",
+    });
   });
 });

@@ -41,6 +41,13 @@ input:
 # output:
 #   - id: require-gateway-check-response
 #     validator: json_schema
+#     # Use exactly one of schema or schema_ref. Inline example:
+#     # schema:
+#     #   type: object
+#     #   properties:
+#     #     status: { const: ok }
+#     #   required: [status]
+#     #   additionalProperties: false
 #     schema_ref: schemas/gateway-check-response.json
 #     on_failure:
 #       type: retry

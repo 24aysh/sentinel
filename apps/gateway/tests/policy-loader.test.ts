@@ -106,6 +106,37 @@ output:
     });
   });
 
+  test("loads and compiles an inline object schema", async () => {
+    const path = await createFixture(`
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+metadata: { name: inline-schema, version: 1 }
+output:
+  - id: inline-output
+    validator: json_schema
+    schema:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      properties:
+        status: { const: ok }
+      required: [status]
+      additionalProperties: false
+    on_failure: { type: block }
+`);
+
+    const output = (await loadGuardrailPolicy(path)).output;
+
+    expect(output?.schema).toEqual({
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: { status: { const: "ok" } },
+      required: ["status"],
+      additionalProperties: false,
+    });
+    expect(output?.validator.validate({ status: "ok" })).toBe(true);
+    expect(output?.validator.validate({ status: "bad" })).toBe(false);
+  });
+
   test("applies documented defaults to a minimal policy", async () => {
     const path = await createFixture(`
 apiVersion: guardrails/v1
@@ -234,7 +265,10 @@ output:
     const malformed = await createFixture(policySource, "not-json");
     const external = await createFixture(
       policySource,
-      JSON.stringify({ $ref: "https://schemas.example.test/output.json" }),
+      JSON.stringify({
+        type: "object",
+        $ref: "https://schemas.example.test/output.json",
+      }),
     );
 
     expect(loadGuardrailPolicy(malformed)).rejects.toBeInstanceOf(
@@ -243,5 +277,66 @@ output:
     expect(loadGuardrailPolicy(external)).rejects.toBeInstanceOf(
       ConfigurationError,
     );
+  });
+
+  test.each([
+    [
+      "neither source",
+      `output:
+  - id: output
+    validator: json_schema
+    on_failure: { type: block }`,
+    ],
+    [
+      "both sources",
+      `output:
+  - id: output
+    validator: json_schema
+    schema: { type: object }
+    schema_ref: schemas/response.json
+    on_failure: { type: block }`,
+    ],
+    [
+      "a non-object root",
+      `output:
+  - id: output
+    validator: json_schema
+    schema: { type: array }
+    on_failure: { type: block }`,
+    ],
+    [
+      "an unsupported dialect",
+      `output:
+  - id: output
+    validator: json_schema
+    schema:
+      $schema: http://json-schema.org/draft-07/schema#
+      type: object
+    on_failure: { type: block }`,
+    ],
+    [
+      "an external inline reference",
+      `output:
+  - id: output
+    validator: json_schema
+    schema:
+      type: object
+      properties:
+        result: { $ref: https://schemas.example.test/result.json }
+    on_failure: { type: block }`,
+    ],
+  ])("rejects inline schema with %s", async (_name, output) => {
+    const path = await createFixture(`
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+metadata: { name: invalid-inline-schema, version: 1 }
+${output}
+`);
+
+    await expect(loadGuardrailPolicy(path)).rejects.toMatchObject({
+      name: "InvalidOutputSchemaConfigurationError",
+      message:
+        "GUARDRAIL_POLICY_PATH contains an invalid or unsupported output schema.",
+    });
   });
 });

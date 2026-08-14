@@ -2,6 +2,7 @@ import type { ChatRequest, ChatResponse } from "../domain/chat.ts";
 import type { RequestContext } from "../domain/request-context.ts";
 import { evaluateConfiguredInput } from "./input/input-evaluation-coordinator.ts";
 import type { PromptInjectionClassifier } from "./input/prompt-injection-classifier.ts";
+import { evaluateOutputChoices } from "./output/output-evaluator.ts";
 import type {
   GuardrailHub,
   InputGuardrailResult,
@@ -22,7 +23,7 @@ function repairRequest(
       { role: "assistant", content: invalidContent },
       {
         role: "user",
-        content: `${prompt}\n\nJSON Schema:\n${JSON.stringify(schema)}\n\nReturn only the corrected JSON value without Markdown or commentary.`,
+        content: `${prompt}\n\nJSON Schema:\n${JSON.stringify(schema)}\n\nReturn only the corrected JSON object without Markdown or commentary.`,
       },
     ],
   };
@@ -32,6 +33,7 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
   readonly identity;
   readonly runtimeFailureMode;
   readonly maximumAttempts;
+  readonly outputJsonSchema;
 
   constructor(
     private readonly policy: LoadedGuardrailPolicy,
@@ -43,6 +45,15 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
       policy.output?.onFailure.type === "retry"
         ? policy.output.onFailure.maximumRetries + 1
         : 1;
+    this.outputJsonSchema = policy.output
+      ? {
+          name: `guardrail_${policy.output.id}`
+            .replace(/[^A-Za-z0-9_-]/g, "_")
+            .slice(0, 64),
+          schema: policy.output.schema,
+          strict: true as const,
+        }
+      : undefined;
   }
 
   async evaluateInput(
@@ -67,14 +78,8 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
       return { decision: "allow" };
     }
 
-    const invalid = response.choices.find(({ message }) => {
-      try {
-        return !output.validator.validate(JSON.parse(message.content.trim()));
-      } catch {
-        return true;
-      }
-    });
-    if (!invalid) return { decision: "allow" };
+    const evaluation = evaluateOutputChoices(response, output.validator);
+    if (evaluation.valid) return { decision: "allow" };
 
     if (
       output.onFailure.type === "retry" &&
@@ -83,15 +88,20 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
       return {
         decision: "retry",
         ruleId: output.id,
+        violationType: evaluation.violationType,
         repairRequest: repairRequest(
           request,
-          invalid.message.content,
+          evaluation.invalidContent,
           output.schema,
           output.onFailure.repairPrompt,
         ),
       };
     }
 
-    return { decision: "block", ruleId: output.id };
+    return {
+      decision: "block",
+      ruleId: output.id,
+      violationType: evaluation.violationType,
+    };
   }
 }

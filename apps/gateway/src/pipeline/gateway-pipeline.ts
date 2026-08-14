@@ -238,7 +238,14 @@ export class GatewayPipeline {
         }
 
         lifecycle.record("provider_started", attemptMetadata);
-        const response = await this.provider.complete(request, context);
+        const providerOptions = this.guardrails?.outputJsonSchema
+          ? { outputJsonSchema: this.guardrails.outputJsonSchema }
+          : undefined;
+        const response = await this.provider.complete(
+          request,
+          context,
+          providerOptions,
+        );
         responses.push(response);
         lifecycle.record("provider_completed", attemptMetadata);
 
@@ -268,13 +275,21 @@ export class GatewayPipeline {
           outputResult.decision === "retry" &&
           attempt >= this.guardrails.maximumAttempts
         ) {
-          outputResult = { decision: "block", ruleId: outputResult.ruleId };
+          outputResult = {
+            decision: "block",
+            ruleId: outputResult.ruleId,
+            violationType: outputResult.violationType,
+          };
         }
         const decisionMetadata = {
           ...attemptMetadata,
           decision: outputResult.decision,
           ruleIds:
             outputResult.decision === "allow" ? [] : [outputResult.ruleId],
+          violationType:
+            outputResult.decision === "allow"
+              ? undefined
+              : outputResult.violationType,
         };
         lifecycle.record("output_guardrails_completed", {
           ...policyMetadata,

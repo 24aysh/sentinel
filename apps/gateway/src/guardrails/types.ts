@@ -1,5 +1,6 @@
 import type { ChatRequest, ChatResponse, ChatRole } from "../domain/chat.ts";
 import type { RequestContext } from "../domain/request-context.ts";
+import type { JsonSchemaOutputConstraint } from "../providers/model-provider.ts";
 
 export const PII_ENTITIES = [
   "EMAIL",
@@ -18,6 +19,8 @@ export type InputActionType = "allow" | "redact" | "block";
 export type InputDetectorType = "pii" | "prompt_injection";
 export type InputExecutionMode = "sequential" | "parallel";
 export type RuntimeFailureMode = "open" | "closed";
+export type OutputViolationType =
+  "output_too_large" | "invalid_json" | "non_object" | "schema_mismatch";
 
 export interface PolicyIdentity {
   name: string;
@@ -109,13 +112,23 @@ export type InputGuardrailResult =
 
 export type OutputGuardrailResult =
   | { decision: "allow" }
-  | { decision: "retry"; ruleId: string; repairRequest: ChatRequest }
-  | { decision: "block"; ruleId: string };
+  | {
+      decision: "retry";
+      ruleId: string;
+      repairRequest: ChatRequest;
+      violationType?: OutputViolationType;
+    }
+  | {
+      decision: "block";
+      ruleId: string;
+      violationType?: OutputViolationType;
+    };
 
 export interface GuardrailHub {
   readonly identity: PolicyIdentity;
   readonly runtimeFailureMode: RuntimeFailureMode;
   readonly maximumAttempts: number;
+  readonly outputJsonSchema?: JsonSchemaOutputConstraint;
 
   evaluateInput(
     request: ChatRequest,

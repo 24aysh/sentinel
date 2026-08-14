@@ -10,7 +10,10 @@ import type {
   RuntimeFailureMode,
 } from "../src/guardrails/types.ts";
 import { GatewayPipeline } from "../src/pipeline/gateway-pipeline.ts";
-import type { ModelProvider } from "../src/providers/model-provider.ts";
+import type {
+  ModelProvider,
+  ProviderCompletionOptions,
+} from "../src/providers/model-provider.ts";
 import { createTestPolicy } from "./helpers/guardrail-policy.ts";
 import { RecordingLogger } from "./helpers/recording-logger.ts";
 
@@ -39,14 +42,17 @@ function response(content: string, includeUsage = true): ChatResponse {
 
 class SequencedProvider implements ModelProvider {
   readonly calls: ChatRequest[] = [];
+  readonly options: Array<ProviderCompletionOptions | undefined> = [];
 
   constructor(private readonly responses: ChatResponse[]) {}
 
   async complete(
     request: ChatRequest,
     _context: RequestContext,
+    options?: ProviderCompletionOptions,
   ): Promise<ChatResponse> {
     this.calls.push(structuredClone(request));
+    this.options.push(structuredClone(options));
     const next = this.responses[this.calls.length - 1];
     if (!next) {
       throw new Error("Unexpected provider call");
@@ -134,6 +140,22 @@ describe("guardrail-enabled GatewayPipeline", () => {
     });
 
     expect(provider.calls).toHaveLength(2);
+    expect(provider.options).toEqual([
+      {
+        outputJsonSchema: {
+          name: "guardrail_test-output",
+          schema,
+          strict: true,
+        },
+      },
+      {
+        outputJsonSchema: {
+          name: "guardrail_test-output",
+          schema,
+          strict: true,
+        },
+      },
+    ]);
     expect(provider.calls[0]?.messages[0]?.content).toBe("Email <EMAIL>");
     expect(
       provider.calls[1]?.messages.slice(-2).map((message) => message.role),
@@ -159,6 +181,12 @@ describe("guardrail-enabled GatewayPipeline", () => {
       "output_guardrails_completed",
       "completed",
     ]);
+    expect(
+      result.lifecycle.find(
+        ({ stage, decision }) =>
+          stage === "output_guardrails_completed" && decision === "retry",
+      ),
+    ).toMatchObject({ violationType: "invalid_json" });
     expect(input).toEqual(snapshot);
   });
 

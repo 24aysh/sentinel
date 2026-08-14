@@ -22,6 +22,7 @@ export type {
   InputExecutionMode,
   InputGuardrailResult,
   OutputGuardrailResult,
+  OutputViolationType,
   PolicyIdentity,
   RuntimeFailureMode,
 } from "./guardrails/types.ts";
@@ -41,7 +42,11 @@ export type {
   LifecycleMetadata,
   LifecycleStage,
 } from "./pipeline/lifecycle.ts";
-export type { ModelProvider } from "./providers/model-provider.ts";
+export type {
+  JsonSchemaOutputConstraint,
+  ModelProvider,
+  ProviderCompletionOptions,
+} from "./providers/model-provider.ts";
 export type {
   FetchImplementation,
   OpenAICompatibleProviderOptions,

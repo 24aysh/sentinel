@@ -41,16 +41,29 @@ const validProviderBody = {
 function createProvider(
   fetchImplementation: FetchImplementation,
   apiKey?: string,
+  structuredOutputMode?: "json_schema" | "disabled",
 ) {
   return new OpenAICompatibleProvider({
     baseUrl: "https://models.example.test/v1/",
     apiKey,
     timeoutMs: 5_000,
     fetch: fetchImplementation,
+    structuredOutputMode,
   });
 }
 
 describe("OpenAICompatibleProvider", () => {
+  test("rejects an unsupported structured output mode", () => {
+    expect(
+      () =>
+        new OpenAICompatibleProvider({
+          baseUrl: "https://models.example.test/v1",
+          timeoutMs: 5_000,
+          structuredOutputMode: "automatic" as "json_schema",
+        }),
+    ).toThrow("structuredOutputMode must be json_schema or disabled.");
+  });
+
   test("maps the request, authorization, and successful response", async () => {
     let capturedInput: string | URL | Request | undefined;
     let capturedInit: RequestInit | undefined;
@@ -104,6 +117,53 @@ describe("OpenAICompatibleProvider", () => {
     await provider.complete(request, context);
 
     expect(new Headers(capturedHeaders).has("authorization")).toBe(false);
+  });
+
+  test("maps a native JSON Schema output constraint", async () => {
+    let capturedBody: unknown;
+    const provider = createProvider(async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+      return Response.json(validProviderBody);
+    });
+    const schema = {
+      type: "object",
+      properties: { status: { type: "string" } },
+      required: ["status"],
+      additionalProperties: false,
+    };
+
+    await provider.complete(request, context, {
+      outputJsonSchema: { name: "guardrail_output", schema, strict: true },
+    });
+
+    expect(capturedBody).toMatchObject({
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: "guardrail_output", schema, strict: true },
+      },
+    });
+  });
+
+  test("can disable native structured output while retaining local guardrails", async () => {
+    let capturedBody: Record<string, unknown> = {};
+    const provider = createProvider(
+      async (_input, init) => {
+        capturedBody = JSON.parse(String(init?.body));
+        return Response.json(validProviderBody);
+      },
+      undefined,
+      "disabled",
+    );
+
+    await provider.complete(request, context, {
+      outputJsonSchema: {
+        name: "guardrail_output",
+        schema: { type: "object" },
+        strict: true,
+      },
+    });
+
+    expect(capturedBody.response_format).toBeUndefined();
   });
 
   test.each([

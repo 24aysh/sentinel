@@ -1,9 +1,15 @@
 import type { ChatInput } from "./domain/chat.ts";
 import { ConfigurationError } from "./domain/errors.ts";
-import { loadGuardrailPolicy } from "./guardrails/config/policy-loader.ts";
+import {
+  InvalidOutputSchemaConfigurationError,
+  loadGuardrailPolicy,
+} from "./guardrails/config/policy-loader.ts";
 import { ConfiguredGuardrailHub } from "./guardrails/guardrail-hub.ts";
 import { loadOnnxPromptInjectionClassifier } from "./guardrails/input/onnx-prompt-injection-classifier.ts";
-import type { GuardrailHub } from "./guardrails/types.ts";
+import type {
+  GuardrailHub,
+  LoadedGuardrailPolicy,
+} from "./guardrails/types.ts";
 import { silentLogger, type Logger } from "./observability/logger.ts";
 import {
   GatewayPipeline,
@@ -85,9 +91,25 @@ export class ModelGateway {
     logger = silentLogger,
     lifecycleListener,
   }: ModelGatewayCreateOptions): Promise<ModelGateway> {
-    const policy = policyPath
-      ? await loadGuardrailPolicy(policyPath, policyWorkingDirectory)
-      : undefined;
+    let policy: LoadedGuardrailPolicy | undefined;
+    try {
+      policy = policyPath
+        ? await loadGuardrailPolicy(policyPath, policyWorkingDirectory)
+        : undefined;
+    } catch (error) {
+      if (error instanceof InvalidOutputSchemaConfigurationError) {
+        try {
+          logger.error({
+            event: "gateway.guardrail_policy_rejected",
+            phase: "startup",
+            reasonCode: "invalid_output_schema",
+          });
+        } catch {
+          // A user logger must not mask the configuration error.
+        }
+      }
+      throw error;
+    }
     const requiresPromptInjectionModel =
       policy?.enabled === true &&
       policy.input.some((rule) => rule.detector === "prompt_injection");

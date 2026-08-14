@@ -30,12 +30,27 @@ type UnknownRecord = Record<string, unknown>;
 
 interface ParsedOutputRule {
   id: string;
-  schemaRef: string;
+  schemaSource:
+    | { type: "inline"; schema: unknown }
+    | { type: "reference"; schemaRef: string };
   onFailure: OutputFailureAction;
+}
+
+export class InvalidOutputSchemaConfigurationError extends ConfigurationError {
+  constructor() {
+    super(
+      "GUARDRAIL_POLICY_PATH contains an invalid or unsupported output schema.",
+    );
+    this.name = "InvalidOutputSchemaConfigurationError";
+  }
 }
 
 function fail(message: string): never {
   throw new ConfigurationError(`GUARDRAIL_POLICY_PATH ${message}`);
+}
+
+function failOutputSchema(): never {
+  throw new InvalidOutputSchemaConfigurationError();
 }
 
 function object(
@@ -305,15 +320,37 @@ function parseOutputRule(
   const rule = object(rules[0], location, [
     "id",
     "validator",
+    "schema",
     "schema_ref",
     "on_failure",
   ]);
   if (rule.validator !== "json_schema") {
     fail(`must use validator json_schema at ${location}.validator.`);
   }
+
+  const hasInlineSchema = Object.hasOwn(rule, "schema");
+  const hasSchemaReference = Object.hasOwn(rule, "schema_ref");
+  if (hasInlineSchema === hasSchemaReference) failOutputSchema();
+
+  let schemaSource: ParsedOutputRule["schemaSource"];
+  if (hasInlineSchema) {
+    schemaSource = { type: "inline", schema: rule.schema };
+  } else {
+    if (
+      typeof rule.schema_ref !== "string" ||
+      rule.schema_ref.trim().length === 0
+    ) {
+      failOutputSchema();
+    }
+    schemaSource = {
+      type: "reference",
+      schemaRef: rule.schema_ref.trim(),
+    };
+  }
+
   return {
     id: name(rule.id, `${location}.id`),
-    schemaRef: text(rule.schema_ref, `${location}.schema_ref`),
+    schemaSource,
     onFailure: parseOutputAction(
       rule.on_failure,
       defaults,
@@ -351,12 +388,51 @@ function hasExternalReference(value: unknown): boolean {
   return Object.values(record).some(hasExternalReference);
 }
 
-async function loadSchema(policyDirectory: string, schemaRef: string) {
+function isJsonCompatible(
+  value: unknown,
+  ancestors = new Set<object>(),
+): boolean {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (typeof value === "number") return Number.isFinite(value);
+  if (typeof value !== "object") return false;
+  if (ancestors.has(value)) return false;
+
+  ancestors.add(value);
+  const compatible = Array.isArray(value)
+    ? value.every((item) => isJsonCompatible(item, ancestors))
+    : Object.entries(value).every(([, item]) =>
+        isJsonCompatible(item, ancestors),
+      );
+  ancestors.delete(value);
+  return compatible;
+}
+
+function compileSchema(schema: unknown) {
+  if (!isJsonCompatible(schema) || hasExternalReference(schema)) {
+    failOutputSchema();
+  }
+  try {
+    return { schema, validator: new CompiledJsonSchemaValidator(schema) };
+  } catch {
+    failOutputSchema();
+  }
+}
+
+async function loadReferencedSchema(
+  policyDirectory: string,
+  schemaRef: string,
+) {
   if (isAbsolute(schemaRef) || extname(schemaRef).toLowerCase() !== ".json") {
-    fail("requires schema_ref to be a relative JSON file.");
+    failOutputSchema();
   }
   const schemaPath = await realpath(resolve(policyDirectory, schemaRef)).catch(
-    () => fail("could not read the configured schema."),
+    () => failOutputSchema(),
   );
   const relativePath = relative(policyDirectory, schemaPath);
   if (
@@ -364,24 +440,31 @@ async function loadSchema(policyDirectory: string, schemaRef: string) {
     relativePath.startsWith(`..${sep}`) ||
     isAbsolute(relativePath)
   ) {
-    fail("requires schema_ref to remain inside the policy directory.");
+    failOutputSchema();
   }
 
-  const source = await readTextFile(schemaPath, "schema file");
+  let source: string;
+  try {
+    source = await readTextFile(schemaPath, "schema file");
+  } catch {
+    failOutputSchema();
+  }
   let schema: unknown;
   try {
     schema = JSON.parse(source);
   } catch {
-    fail("contains invalid JSON in the configured schema.");
+    failOutputSchema();
   }
-  if (hasExternalReference(schema)) {
-    fail("does not support remote or cross-file schema references.");
-  }
-  try {
-    return { schema, validator: new CompiledJsonSchemaValidator(schema) };
-  } catch {
-    fail("contains a schema that could not be compiled.");
-  }
+  return compileSchema(schema);
+}
+
+async function loadSchema(
+  policyDirectory: string,
+  source: ParsedOutputRule["schemaSource"],
+) {
+  return source.type === "inline"
+    ? compileSchema(source.schema)
+    : loadReferencedSchema(policyDirectory, source.schemaRef);
 }
 
 export async function loadGuardrailPolicy(
@@ -458,7 +541,7 @@ export async function loadGuardrailPolicy(
     loaded.output = {
       id: output.id,
       onFailure: output.onFailure,
-      ...(await loadSchema(dirname(policyPath), output.schemaRef)),
+      ...(await loadSchema(dirname(policyPath), output.schemaSource)),
     };
   }
   return loaded;
