@@ -623,4 +623,3 @@ Do not commit real provider credentials.
 
 Created by [@24aysh](https://x.com/24aysh) ·
 [LinkedIn](https://www.linkedin.com/in/c0ntinental/) ·
-[GitHub](https://github.com/24aysh/sentinel/)
