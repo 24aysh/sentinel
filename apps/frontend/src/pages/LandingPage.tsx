@@ -94,6 +94,7 @@ export function LandingPage() {
           <div className="hero-visual-wrap">
             <div className="visual-tag tag-request">raw request <ArrowRight /></div>
             <div className="visual-tag tag-policy"><Lock /> policy.yaml</div>
+            <div className="comic-burst" aria-hidden="true"><strong>SAFE!</strong><span>TO SEND</span></div>
             <HeroGatewayVisual />
             <div className="hero-visual-shadow" />
           </div>
