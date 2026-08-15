@@ -19,6 +19,8 @@ export type InputActionType = "allow" | "redact" | "block";
 export type InputDetectorType = "pii" | "prompt_injection";
 export type InputExecutionMode = "sequential" | "parallel";
 export type RuntimeFailureMode = "open" | "closed";
+export type ToolPolicyAction = "allow" | "block";
+export type ToolArgumentOperator = "equals" | "contains";
 export type OutputViolationType =
   "output_too_large" | "invalid_json" | "non_object" | "schema_mismatch";
 
@@ -72,12 +74,33 @@ export interface OutputPolicyRule {
   onFailure: OutputFailureAction;
 }
 
+export type ToolArgumentValue = string | number | boolean | null;
+
+export interface ToolArgumentMatcher {
+  path: readonly string[];
+  operator: ToolArgumentOperator;
+  values: readonly ToolArgumentValue[];
+}
+
+export interface ToolPolicyRule {
+  id: string;
+  toolNames: readonly string[];
+  action: ToolPolicyAction;
+  arguments?: readonly ToolArgumentMatcher[];
+}
+
+export interface ToolPolicy {
+  defaultAction: ToolPolicyAction;
+  rules: readonly ToolPolicyRule[];
+}
+
 export interface LoadedGuardrailPolicy {
   enabled: boolean;
   identity: PolicyIdentity;
   defaults: PolicyDefaults;
   input: InputPolicyRule[];
   output?: OutputPolicyRule;
+  tools?: ToolPolicy;
 }
 
 export interface PiiFinding {
@@ -129,6 +152,7 @@ export interface GuardrailHub {
   readonly runtimeFailureMode: RuntimeFailureMode;
   readonly maximumAttempts: number;
   readonly outputJsonSchema?: JsonSchemaOutputConstraint;
+  readonly toolPolicy?: ToolPolicy;
 
   evaluateInput(
     request: ChatRequest,

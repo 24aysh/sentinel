@@ -158,16 +158,18 @@ function better(first: PiiFinding, second: PiiFinding): PiiFinding {
 }
 
 export function detectPii(messages: readonly ChatMessage[]): PiiFinding[] {
-  const findings = messages.flatMap((message, messageIndex) =>
-    PII_ENTITIES.flatMap((entity) =>
-      FINDERS[entity](message.content).map((span) => ({
+  const findings = messages.flatMap((message, messageIndex) => {
+    const content = message.content;
+    if (typeof content !== "string") return [];
+    return PII_ENTITIES.flatMap((entity) =>
+      FINDERS[entity](content).map((span) => ({
         entity,
         messageIndex,
         role: message.role,
         ...span,
       })),
-    ),
-  );
+    );
+  });
   findings.sort(
     (a, b) =>
       a.messageIndex - b.messageIndex || a.start - b.start || a.end - b.end,

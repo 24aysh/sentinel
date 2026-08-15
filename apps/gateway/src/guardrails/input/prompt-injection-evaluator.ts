@@ -33,7 +33,7 @@ export async function evaluatePromptInjectionInput(
 ): Promise<PromptInjectionInputResult> {
   const selectedRoles = new Set(rules.flatMap((rule) => rule.roles));
   const selectedMessages = request.messages.flatMap((message, messageIndex) =>
-    selectedRoles.has(message.role)
+    selectedRoles.has(message.role) && typeof message.content === "string"
       ? [{ messageIndex, role: message.role, content: message.content }]
       : [],
   );

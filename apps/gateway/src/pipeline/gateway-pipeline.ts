@@ -1,9 +1,5 @@
-import {
-  CHAT_ROLES,
-  type ChatInput,
-  type ChatRequest,
-  type ChatResponse,
-} from "../domain/chat.ts";
+import type { ChatInput, ChatRequest, ChatResponse } from "../domain/chat.ts";
+import { normalizeChatInput } from "../domain/chat-normalizer.ts";
 import { GatewayError, normalizeGatewayError } from "../domain/errors.ts";
 import {
   createRequestContext,
@@ -11,6 +7,12 @@ import {
   type RequestContext,
 } from "../domain/request-context.ts";
 import { InputDetectorEvaluationError } from "../guardrails/input/input-evaluation-coordinator.ts";
+import {
+  classifyChatResponse,
+  evaluateToolCalls,
+  filterToolDefinitions,
+} from "../guardrails/tools/tool-call-evaluator.ts";
+import { ToolSchemaRegistry } from "../guardrails/tools/tool-schema-validator.ts";
 import type {
   GuardrailHub,
   InputDetectorType,
@@ -43,68 +45,14 @@ export interface GatewayExecutionResult {
   context: RequestContext;
   durationMs: number;
   lifecycle: readonly LifecycleEvent[];
+  toolGuardrails?: ToolGuardrailSummary;
 }
 
-function invalidRequest(message: string): never {
-  throw new GatewayError("INVALID_REQUEST", message, 400);
-}
-
-function normalizeInput(input: ChatInput, defaultModel: string): ChatRequest {
-  if (input.stream === true) {
-    throw new GatewayError(
-      "UNSUPPORTED_FEATURE",
-      "Streaming responses are not supported by this gateway version.",
-      400,
-    );
-  }
-
-  if (!Array.isArray(input.messages) || input.messages.length === 0) {
-    invalidRequest("messages must contain at least one item.");
-  }
-
-  if (input.model !== undefined && input.model.trim().length === 0) {
-    invalidRequest("model must be a non-empty string when provided.");
-  }
-
-  if (
-    input.temperature !== undefined &&
-    (typeof input.temperature !== "number" ||
-      !Number.isFinite(input.temperature) ||
-      input.temperature < 0 ||
-      input.temperature > 2)
-  ) {
-    invalidRequest("temperature must be a number from 0 through 2.");
-  }
-
-  if (
-    input.maxTokens !== undefined &&
-    (!Number.isInteger(input.maxTokens) || input.maxTokens <= 0)
-  ) {
-    invalidRequest("max_tokens must be a positive integer.");
-  }
-
-  const messages = input.messages.map((message) => {
-    if (!CHAT_ROLES.includes(message.role)) {
-      invalidRequest("Every message must use a supported role.");
-    }
-    if (
-      typeof message.content !== "string" ||
-      message.content.trim().length === 0
-    ) {
-      invalidRequest("Every message must contain non-empty text content.");
-    }
-
-    return { role: message.role, content: message.content };
-  });
-
-  return {
-    model: input.model?.trim() || defaultModel,
-    messages,
-    ...(input.temperature !== undefined && {
-      temperature: input.temperature,
-    }),
-    ...(input.maxTokens !== undefined && { maxTokens: input.maxTokens }),
-  };
+export interface ToolGuardrailSummary {
+  decision: "allow" | "filter";
+  allowedCallCount: number;
+  blockedCallCount: number;
+  ruleIds: string[];
 }
 
 function aggregateUsage(
@@ -168,7 +116,9 @@ export class GatewayPipeline {
     lifecycle.record("received");
 
     try {
-      let request = normalizeInput(input, this.defaultModel);
+      let request = normalizeChatInput(input, this.defaultModel);
+      const toolSchemas = new ToolSchemaRegistry(request.tools);
+      toolSchemas.validateRequestHistory(request);
       lifecycle.record("validated");
 
       if (this.guardrails) {
@@ -225,6 +175,30 @@ export class GatewayPipeline {
         request = inputResult.request;
       }
 
+      if (this.guardrails?.toolPolicy && request.tools) {
+        const policyMetadata = this.policyMetadata();
+        lifecycle.record("tool_definitions_guardrails_started", policyMetadata);
+        const toolDefinitions = filterToolDefinitions(
+          request,
+          this.guardrails.toolPolicy,
+        );
+        const decisionMetadata = {
+          decision:
+            toolDefinitions.blockedDefinitionCount > 0
+              ? ("filter" as const)
+              : ("allow" as const),
+          allowedDefinitionCount: toolDefinitions.allowedDefinitionCount,
+          blockedDefinitionCount: toolDefinitions.blockedDefinitionCount,
+          ruleIds: toolDefinitions.ruleIds,
+        };
+        lifecycle.record("tool_definitions_guardrails_completed", {
+          ...policyMetadata,
+          ...decisionMetadata,
+        });
+        this.logDecision("tool_definitions", decisionMetadata, context);
+        request = toolDefinitions.request;
+      }
+
       const responses: ChatResponse[] = [];
       const providerRequest = request;
       let attempt = 1;
@@ -248,6 +222,53 @@ export class GatewayPipeline {
         );
         responses.push(response);
         lifecycle.record("provider_completed", attemptMetadata);
+
+        if (classifyChatResponse(response) === "tool_calls") {
+          const policyMetadata = this.guardrails ? this.policyMetadata() : {};
+          lifecycle.record("tool_calls_guardrails_started", {
+            ...policyMetadata,
+            ...attemptMetadata,
+          });
+          const toolResult = evaluateToolCalls(
+            request,
+            response,
+            toolSchemas,
+            this.guardrails?.toolPolicy,
+          );
+          const decisionMetadata = {
+            ...attemptMetadata,
+            decision: toolResult.decision,
+            allowedCallCount: toolResult.allowedCallCount,
+            blockedCallCount: toolResult.blockedCallCount,
+            ruleIds: toolResult.ruleIds,
+          };
+          lifecycle.record("tool_calls_guardrails_completed", {
+            ...policyMetadata,
+            ...decisionMetadata,
+          });
+          this.logDecision("tool_calls", decisionMetadata, context);
+          if (toolResult.decision === "block") {
+            throw new GatewayError(
+              "TOOL_GUARDRAIL_BLOCKED",
+              "The model tool calls did not satisfy the tool policy.",
+              502,
+            );
+          }
+          const finalResponse = aggregateUsage(toolResult.response, responses);
+          lifecycle.record("completed");
+          return this.result(
+            finalResponse,
+            providerRequest,
+            context,
+            lifecycle,
+            {
+              decision: toolResult.decision,
+              allowedCallCount: toolResult.allowedCallCount,
+              blockedCallCount: toolResult.blockedCallCount,
+              ruleIds: toolResult.ruleIds,
+            },
+          );
+        }
 
         if (!this.guardrails) {
           lifecycle.record("completed");
@@ -360,7 +381,7 @@ export class GatewayPipeline {
   }
 
   private logDecision(
-    phase: "input" | "output",
+    phase: "input" | "output" | "tool_definitions" | "tool_calls",
     metadata: Record<string, unknown>,
     context: RequestContext,
   ): void {
@@ -368,8 +389,10 @@ export class GatewayPipeline {
       event: "gateway.guardrail_decision",
       requestId: context.requestId,
       phase,
-      policyName: this.guardrails!.identity.name,
-      policyVersion: this.guardrails!.identity.version,
+      ...(this.guardrails && {
+        policyName: this.guardrails.identity.name,
+        policyVersion: this.guardrails.identity.version,
+      }),
       ...metadata,
     });
   }
@@ -399,6 +422,7 @@ export class GatewayPipeline {
     providerRequest: ChatRequest,
     context: RequestContext,
     lifecycle: LifecycleTracker,
+    toolGuardrails?: ToolGuardrailSummary,
   ): GatewayExecutionResult {
     return {
       response,
@@ -406,6 +430,7 @@ export class GatewayPipeline {
       context,
       durationMs: Math.max(0, Date.now() - context.startedAt),
       lifecycle: lifecycle.events,
+      ...(toolGuardrails && { toolGuardrails }),
     };
   }
 }

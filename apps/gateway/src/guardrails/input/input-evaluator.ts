@@ -44,6 +44,7 @@ function redact(
   return {
     ...request,
     messages: request.messages.map((message, index) => {
+      if (typeof message.content !== "string") return message;
       let content = message.content;
       for (const { finding, action } of (
         byMessage.get(index) ?? []

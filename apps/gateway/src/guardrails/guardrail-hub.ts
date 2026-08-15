@@ -34,6 +34,7 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
   readonly runtimeFailureMode;
   readonly maximumAttempts;
   readonly outputJsonSchema;
+  readonly toolPolicy;
 
   constructor(
     private readonly policy: LoadedGuardrailPolicy,
@@ -41,6 +42,7 @@ export class ConfiguredGuardrailHub implements GuardrailHub {
   ) {
     this.identity = policy.identity;
     this.runtimeFailureMode = policy.defaults.runtimeFailureMode;
+    this.toolPolicy = policy.tools;
     this.maximumAttempts =
       policy.output?.onFailure.type === "retry"
         ? policy.output.onFailure.maximumRetries + 1

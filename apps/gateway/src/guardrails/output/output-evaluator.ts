@@ -62,6 +62,13 @@ export function evaluateOutputChoices(
   validator: OutputValidator,
 ): OutputEvaluation {
   for (const choice of response.choices) {
+    if (choice.message.content === null) {
+      return {
+        valid: false,
+        invalidContent: "",
+        violationType: "invalid_json",
+      };
+    }
     const result = evaluateContent(choice.message.content, validator);
     if (!result.valid) return result;
   }

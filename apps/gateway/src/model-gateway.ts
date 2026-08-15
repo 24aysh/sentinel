@@ -145,6 +145,7 @@ export class ModelGateway {
         enabled: policy.enabled,
         inputRuleCount: policy.input.length,
         outputRuleCount: policy.output ? 1 : 0,
+        toolRuleCount: policy.tools?.rules.length ?? 0,
       });
     }
     if (promptInjectionClassifier) {

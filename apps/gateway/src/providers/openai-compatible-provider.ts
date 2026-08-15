@@ -1,4 +1,9 @@
-import type { ChatRequest, ChatResponse } from "../domain/chat.ts";
+import type {
+  ChatMessage,
+  ChatRequest,
+  ChatResponse,
+  FunctionToolCall,
+} from "../domain/chat.ts";
 import { ConfigurationError, GatewayError } from "../domain/errors.ts";
 import type { RequestContext } from "../domain/request-context.ts";
 import type {
@@ -43,6 +48,24 @@ function invalidResponse(
   throw new GatewayError("INVALID_MODEL_RESPONSE", message, 502);
 }
 
+function toProviderMessage(message: ChatMessage) {
+  if (message.role === "assistant") {
+    return {
+      role: message.role,
+      content: message.content,
+      ...(message.toolCalls && { tool_calls: message.toolCalls }),
+    };
+  }
+  if (message.role === "tool") {
+    return {
+      role: message.role,
+      content: message.content,
+      tool_call_id: message.toolCallId,
+    };
+  }
+  return message;
+}
+
 function toProviderRequest(
   request: ChatRequest,
   options: ProviderCompletionOptions | undefined,
@@ -50,13 +73,20 @@ function toProviderRequest(
 ) {
   return {
     model: request.model,
-    messages: request.messages,
+    messages: request.messages.map(toProviderMessage),
     stream: false,
     ...(request.temperature !== undefined && {
       temperature: request.temperature,
     }),
     ...(request.maxTokens !== undefined && {
       max_tokens: request.maxTokens,
+    }),
+    ...(request.tools && { tools: request.tools }),
+    ...(request.toolChoice !== undefined && {
+      tool_choice: request.toolChoice,
+    }),
+    ...(request.parallelToolCalls !== undefined && {
+      parallel_tool_calls: request.parallelToolCalls,
     }),
     ...(structuredOutputMode === "json_schema" &&
       options?.outputJsonSchema && {
@@ -68,17 +98,53 @@ function toProviderRequest(
   };
 }
 
+function parseToolCall(value: unknown): FunctionToolCall {
+  const callable = isRecord(value) ? value.function : undefined;
+  if (
+    !isRecord(value) ||
+    typeof value.id !== "string" ||
+    value.id.length === 0 ||
+    value.id.length > 256 ||
+    value.type !== "function" ||
+    !isRecord(callable) ||
+    typeof callable.name !== "string" ||
+    !/^[A-Za-z0-9_-]{1,64}$/.test(callable.name) ||
+    typeof callable.arguments !== "string" ||
+    callable.arguments.length > 1_000_000
+  ) {
+    invalidResponse();
+  }
+  return {
+    id: value.id,
+    type: "function",
+    function: {
+      name: callable.name,
+      arguments: callable.arguments,
+    },
+  };
+}
+
 function parseChoice(value: unknown): ChatResponse["choices"][number] {
   const message = isRecord(value) ? value.message : undefined;
   if (
     !isRecord(value) ||
     typeof value.index !== "number" ||
     !isRecord(message) ||
-    message.role !== "assistant" ||
-    typeof message.content !== "string"
+    message.role !== "assistant"
   ) {
     invalidResponse();
   }
+
+  const toolCalls =
+    message.tool_calls === undefined
+      ? undefined
+      : Array.isArray(message.tool_calls) && message.tool_calls.length > 0
+        ? message.tool_calls.map(parseToolCall)
+        : invalidResponse();
+  if (message.content !== null && typeof message.content !== "string") {
+    invalidResponse();
+  }
+  if (message.content === null && !toolCalls) invalidResponse();
 
   const finishReason = value.finish_reason;
   if (finishReason !== null && typeof finishReason !== "string") {
@@ -87,7 +153,11 @@ function parseChoice(value: unknown): ChatResponse["choices"][number] {
 
   return {
     index: value.index,
-    message: { role: "assistant", content: message.content },
+    message: {
+      role: "assistant",
+      content: message.content,
+      ...(toolCalls && { toolCalls }),
+    },
     finishReason,
   };
 }

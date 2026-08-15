@@ -13,15 +13,20 @@ export type LifecycleStage =
   | "validated"
   | "input_guardrails_started"
   | "input_guardrails_completed"
+  | "tool_definitions_guardrails_started"
+  | "tool_definitions_guardrails_completed"
   | "provider_started"
   | "provider_completed"
+  | "tool_calls_guardrails_started"
+  | "tool_calls_guardrails_completed"
   | "output_guardrails_started"
   | "output_guardrails_completed"
   | "retry_started"
   | "completed"
   | "failed";
 
-export type LifecycleDecision = "allow" | "redact" | "block" | "retry";
+export type LifecycleDecision =
+  "allow" | "redact" | "filter" | "block" | "retry";
 
 export interface LifecycleMetadata {
   policyName?: string;
@@ -39,6 +44,10 @@ export interface LifecycleMetadata {
   attempt?: number;
   maximumAttempts?: number;
   violationType?: OutputViolationType;
+  allowedDefinitionCount?: number;
+  blockedDefinitionCount?: number;
+  allowedCallCount?: number;
+  blockedCallCount?: number;
 }
 
 export interface LifecycleEvent extends LifecycleMetadata {

@@ -13,6 +13,9 @@ export type {
   ChatRequest,
   ChatResponse,
   ChatRole,
+  FunctionToolCall,
+  FunctionToolDefinition,
+  ToolChoice,
 } from "./domain/chat.ts";
 export type { GatewayErrorCode } from "./domain/errors.ts";
 export type { RequestContext } from "./domain/request-context.ts";
@@ -25,6 +28,12 @@ export type {
   OutputViolationType,
   PolicyIdentity,
   RuntimeFailureMode,
+  ToolArgumentMatcher,
+  ToolArgumentOperator,
+  ToolArgumentValue,
+  ToolPolicy,
+  ToolPolicyAction,
+  ToolPolicyRule,
 } from "./guardrails/types.ts";
 export type {
   ModelGatewayCreateOptions,
@@ -34,6 +43,7 @@ export type { LogRecord, Logger } from "./observability/logger.ts";
 export type {
   ChatCompletionRequestOptions,
   GatewayExecutionResult,
+  ToolGuardrailSummary,
 } from "./pipeline/gateway-pipeline.ts";
 export type {
   LifecycleDecision,

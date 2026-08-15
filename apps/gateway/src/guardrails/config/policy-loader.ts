@@ -22,10 +22,23 @@ import {
   type PiiEntity,
   type PolicyDefaults,
   type RuntimeFailureMode,
+  type ToolArgumentMatcher,
+  type ToolArgumentOperator,
+  type ToolArgumentValue,
+  type ToolPolicy,
+  type ToolPolicyAction,
+  type ToolPolicyRule,
 } from "../types.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024;
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const TOOL_PATH_SEGMENT_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+const FORBIDDEN_PATH_SEGMENTS = new Set([
+  "__proto__",
+  "prototype",
+  "constructor",
+]);
 type UnknownRecord = Record<string, unknown>;
 
 interface ParsedOutputRule {
@@ -359,6 +372,142 @@ function parseOutputRule(
   };
 }
 
+function parseToolNames(value: unknown, location: string): string[] {
+  const names = array(value, location);
+  if (names.length === 0 || names.length > 128) {
+    fail(`must contain 1 through 128 items at ${location}.`);
+  }
+  const result = names.map((item, index) => {
+    const candidate = text(item, `${location}[${index}]`, 64);
+    if (!TOOL_NAME_PATTERN.test(candidate)) {
+      fail(`contains an invalid tool name at ${location}[${index}].`);
+    }
+    return candidate;
+  });
+  if (new Set(result).size !== result.length) {
+    fail(`must not contain duplicate values at ${location}.`);
+  }
+  return result;
+}
+
+function parseToolArgumentValue(
+  value: unknown,
+  location: string,
+): ToolArgumentValue {
+  if (
+    value === null ||
+    typeof value === "boolean" ||
+    (typeof value === "number" && Number.isFinite(value))
+  ) {
+    return value;
+  }
+  if (typeof value === "string" && value.length <= 4_096) return value;
+  fail(`must contain a bounded JSON scalar at ${location}.`);
+}
+
+function parseToolPath(value: unknown, location: string): string[] {
+  const source = text(value, location, 512);
+  const segments = source.split(".");
+  if (
+    segments.length > 16 ||
+    segments.some(
+      (segment) =>
+        !TOOL_PATH_SEGMENT_PATTERN.test(segment) ||
+        FORBIDDEN_PATH_SEGMENTS.has(segment),
+    )
+  ) {
+    fail(`contains an invalid object path at ${location}.`);
+  }
+  return segments;
+}
+
+function parseToolArgumentMatchers(
+  value: unknown,
+  location: string,
+): ToolArgumentMatcher[] {
+  const matchers = array(value, location);
+  if (matchers.length === 0 || matchers.length > 16) {
+    fail(`must contain 1 through 16 items at ${location}.`);
+  }
+  return matchers.map((item, index) => {
+    const matcherLocation = `${location}[${index}]`;
+    const matcher = object(item, matcherLocation, [
+      "path",
+      "operator",
+      "values",
+    ]);
+    const operator = oneOf<ToolArgumentOperator>(
+      matcher.operator,
+      ["equals", "contains"],
+      `${matcherLocation}.operator`,
+    );
+    const rawValues = array(matcher.values, `${matcherLocation}.values`);
+    if (rawValues.length === 0 || rawValues.length > 64) {
+      fail(`must contain 1 through 64 items at ${matcherLocation}.values.`);
+    }
+    const values = rawValues.map((candidate, valueIndex) =>
+      parseToolArgumentValue(
+        candidate,
+        `${matcherLocation}.values[${valueIndex}]`,
+      ),
+    );
+    if (
+      operator === "contains" &&
+      values.some((candidate) => typeof candidate !== "string")
+    ) {
+      fail(`allows only string values at ${matcherLocation}.values.`);
+    }
+    return {
+      path: parseToolPath(matcher.path, `${matcherLocation}.path`),
+      operator,
+      values,
+    };
+  });
+}
+
+function parseToolPolicy(value: unknown): ToolPolicy | undefined {
+  if (value === undefined) return undefined;
+  const tools = object(value, "tools", ["default_action", "rules"]);
+  const defaultAction = oneOf<ToolPolicyAction>(
+    tools.default_action,
+    ["allow", "block"],
+    "tools.default_action",
+  );
+  const rulesSource = array(tools.rules, "tools.rules");
+  if (rulesSource.length > 128) {
+    fail("supports at most 128 tool rules.");
+  }
+  const rules: ToolPolicyRule[] = rulesSource.map((item, index) => {
+    const location = `tools.rules[${index}]`;
+    const rule = object(item, location, [
+      "id",
+      "tool_names",
+      "arguments",
+      "action",
+    ]);
+    const action = oneOf<ToolPolicyAction>(
+      rule.action,
+      ["allow", "block"],
+      `${location}.action`,
+    );
+    if (action === "allow" && rule.arguments !== undefined) {
+      fail(`allows arguments only for block at ${location}.`);
+    }
+    return {
+      id: name(rule.id, `${location}.id`),
+      toolNames: parseToolNames(rule.tool_names, `${location}.tool_names`),
+      action,
+      ...(rule.arguments !== undefined && {
+        arguments: parseToolArgumentMatchers(
+          rule.arguments,
+          `${location}.arguments`,
+        ),
+      }),
+    };
+  });
+  return { defaultAction, rules };
+}
+
 async function readTextFile(path: string, label: string): Promise<string> {
   const details = await stat(path).catch(() =>
     fail(`could not read the configured ${label}.`),
@@ -498,6 +647,7 @@ export async function loadGuardrailPolicy(
     "defaults",
     "input",
     "output",
+    "tools",
   ]);
   if (policy.apiVersion !== "guardrails/v1") {
     fail("must use apiVersion guardrails/v1.");
@@ -518,7 +668,12 @@ export async function loadGuardrailPolicy(
     );
   }
   const output = parseOutputRule(policy.output, defaults);
-  const ids = [...input.map(({ id }) => id), ...(output ? [output.id] : [])];
+  const tools = parseToolPolicy(policy.tools);
+  const ids = [
+    ...input.map(({ id }) => id),
+    ...(output ? [output.id] : []),
+    ...(tools?.rules.map(({ id }) => id) ?? []),
+  ];
   if (new Set(ids).size !== ids.length) {
     fail("requires globally unique rule IDs.");
   }
@@ -536,6 +691,7 @@ export async function loadGuardrailPolicy(
     },
     defaults,
     input,
+    ...(tools && { tools }),
   };
   if (output) {
     loaded.output = {
