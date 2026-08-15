@@ -168,7 +168,7 @@ input: []
       "unknown role",
       `  - id: invalid
     detector: prompt_injection
-    roles: [tool]
+    roles: [developer]
     action: { type: block }`,
     ],
     [

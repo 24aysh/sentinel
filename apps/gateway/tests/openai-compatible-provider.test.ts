@@ -144,6 +144,169 @@ describe("OpenAICompatibleProvider", () => {
     });
   });
 
+  test("maps function tools and parses returned tool calls", async () => {
+    let capturedBody: Record<string, unknown> = {};
+    const toolRequest: ChatRequest = {
+      model: "provider-model",
+      messages: [{ role: "user", content: "Check Pune weather" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "get_weather",
+            description: "Get weather for a city",
+            strict: true,
+            parameters: {
+              type: "object",
+              properties: { city: { type: "string" } },
+              required: ["city"],
+              additionalProperties: false,
+            },
+          },
+        },
+      ],
+      toolChoice: "required",
+      parallelToolCalls: false,
+    };
+    const provider = createProvider(async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+      return Response.json({
+        id: "chatcmpl-tool",
+        created: 1,
+        model: "provider-model",
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call_weather",
+                  type: "function",
+                  function: {
+                    name: "get_weather",
+                    arguments: '{"city":"Pune"}',
+                  },
+                },
+              ],
+            },
+            finish_reason: "tool_calls",
+          },
+        ],
+      });
+    });
+
+    const outputSchema = {
+      type: "object",
+      properties: { status: { type: "string" } },
+      required: ["status"],
+      additionalProperties: false,
+    };
+    const response = await provider.complete(toolRequest, context, {
+      outputJsonSchema: {
+        name: "guardrail_output",
+        schema: outputSchema,
+        strict: true,
+      },
+    });
+
+    expect(capturedBody).toMatchObject({
+      tools: toolRequest.tools,
+      tool_choice: "required",
+      parallel_tool_calls: false,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "guardrail_output",
+          schema: outputSchema,
+          strict: true,
+        },
+      },
+    });
+    expect(response.choices[0]?.message).toEqual({
+      role: "assistant",
+      content: null,
+      toolCalls: [
+        {
+          id: "call_weather",
+          type: "function",
+          function: {
+            name: "get_weather",
+            arguments: '{"city":"Pune"}',
+          },
+        },
+      ],
+    });
+  });
+
+  test("maps assistant tool-call history and tool results", async () => {
+    let capturedBody: { messages?: unknown[] } = {};
+    const provider = createProvider(async (_input, init) => {
+      capturedBody = JSON.parse(String(init?.body));
+      return Response.json(validProviderBody);
+    });
+
+    await provider.complete(
+      {
+        model: "provider-model",
+        messages: [
+          { role: "user", content: "Check weather" },
+          {
+            role: "assistant",
+            content: null,
+            toolCalls: [
+              {
+                id: "call_weather",
+                type: "function",
+                function: {
+                  name: "get_weather",
+                  arguments: '{"city":"Pune"}',
+                },
+              },
+            ],
+          },
+          {
+            role: "tool",
+            toolCallId: "call_weather",
+            content: '{"temperature":25}',
+          },
+        ],
+      },
+      context,
+    );
+
+    expect(capturedBody.messages?.[1]).toMatchObject({
+      role: "assistant",
+      content: null,
+      tool_calls: [expect.objectContaining({ id: "call_weather" })],
+    });
+    expect(capturedBody.messages?.[2]).toEqual({
+      role: "tool",
+      tool_call_id: "call_weather",
+      content: '{"temperature":25}',
+    });
+  });
+
+  test("rejects null assistant content without tool calls", async () => {
+    const provider = createProvider(async () =>
+      Response.json({
+        ...validProviderBody,
+        choices: [
+          {
+            index: 0,
+            message: { role: "assistant", content: null },
+            finish_reason: "stop",
+          },
+        ],
+      }),
+    );
+
+    await expect(provider.complete(request, context)).rejects.toMatchObject({
+      code: "INVALID_MODEL_RESPONSE",
+    });
+  });
+
   test("can disable native structured output while retaining local guardrails", async () => {
     let capturedBody: Record<string, unknown> = {};
     const provider = createProvider(

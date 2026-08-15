@@ -159,6 +159,72 @@ metadata:
     expect(policy.output).toBeUndefined();
   });
 
+  test("loads name and argument tool guardrails", async () => {
+    const path = await createFixture(`
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+metadata: { name: tool-policy, version: 1 }
+tools:
+  default_action: allow
+  rules:
+    - id: block-shell
+      tool_names: [run_shell]
+      action: block
+    - id: block-fork-bomb
+      tool_names: [run_command]
+      arguments:
+        - path: command
+          operator: equals
+          values: [':(){ :|:& };:']
+      action: block
+`);
+
+    expect((await loadGuardrailPolicy(path)).tools).toEqual({
+      defaultAction: "allow",
+      rules: [
+        {
+          id: "block-shell",
+          toolNames: ["run_shell"],
+          action: "block",
+        },
+        {
+          id: "block-fork-bomb",
+          toolNames: ["run_command"],
+          arguments: [
+            {
+              path: ["command"],
+              operator: "equals",
+              values: [":(){ :|:& };:"],
+            },
+          ],
+          action: "block",
+        },
+      ],
+    });
+  });
+
+  test("rejects argument matchers on allow tool rules", async () => {
+    const path = await createFixture(`
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+metadata: { name: invalid-tool-policy, version: 1 }
+tools:
+  default_action: block
+  rules:
+    - id: invalid-allow
+      tool_names: [run_shell]
+      arguments:
+        - path: command
+          operator: contains
+          values: [safe]
+      action: allow
+`);
+
+    await expect(loadGuardrailPolicy(path)).rejects.toBeInstanceOf(
+      ConfigurationError,
+    );
+  });
+
   test.each([
     [
       "unknown top-level field",

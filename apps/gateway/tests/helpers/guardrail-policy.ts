@@ -6,6 +6,7 @@ import type {
   LoadedGuardrailPolicy,
   OutputFailureAction,
   RuntimeFailureMode,
+  ToolPolicy,
 } from "../../src/guardrails/types.ts";
 
 interface PolicyOptions {
@@ -17,6 +18,7 @@ interface PolicyOptions {
     schema: unknown;
     onFailure: OutputFailureAction;
   };
+  tools?: ToolPolicy;
 }
 
 export function createTestPolicy(
@@ -32,6 +34,7 @@ export function createTestPolicy(
       maximumRetries: 1,
     },
     input: options.input ?? [],
+    ...(options.tools && { tools: options.tools }),
   };
 
   if (options.output) {

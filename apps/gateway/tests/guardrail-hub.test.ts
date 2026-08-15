@@ -304,6 +304,46 @@ describe("ConfiguredGuardrailHub input evaluation", () => {
     });
   });
 
+  test("can inspect tool-result content without reading tool arguments", async () => {
+    let classified = "";
+    const hub = new ConfiguredGuardrailHub(
+      createTestPolicy({
+        input: [
+          {
+            id: "block-tool-injection",
+            detector: "prompt_injection",
+            roles: ["tool"],
+            action: { type: "block" },
+          },
+        ],
+      }),
+      classifier(async (messages) => {
+        classified = messages[0]?.content ?? "";
+        return {
+          decision: "allow",
+          evaluatedMessageCount: 1,
+          evaluatedWindowCount: 1,
+        };
+      }),
+    );
+    const toolRequest: ChatRequest = {
+      model: "test-model",
+      messages: [
+        {
+          role: "tool",
+          toolCallId: "call_weather",
+          content: "untrusted tool output",
+        },
+      ],
+    };
+
+    expect(await hub.evaluateInput(toolRequest, context)).toMatchObject({
+      decision: "allow",
+      evaluatedMessageCount: 1,
+    });
+    expect(classified).toBe("untrusted tool output");
+  });
+
   test("preserves completed PII redaction when Layer 2 fails open", async () => {
     const hub = new ConfiguredGuardrailHub(
       createTestPolicy({

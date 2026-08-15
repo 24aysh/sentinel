@@ -12,6 +12,12 @@ const invalidInputs: Array<[name: string, input: ChatInput]> = [
   [
     "an unsupported role",
     {
+      messages: [{ role: "developer", content: "Hello" }],
+    } as unknown as ChatInput,
+  ],
+  [
+    "a tool message without a call ID",
+    {
       messages: [{ role: "tool", content: "Hello" }],
     } as unknown as ChatInput,
   ],
