@@ -8,7 +8,9 @@ server.
 Layer 1 detects and redacts or blocks supported PII. Layer 2 can run the
 fine-tuned prompt-injection classifier locally from a sealed ONNX artifact
 before a request reaches the provider. Output guardrails provide strict JSON
-Schema validation and bounded repair retries.
+Schema validation and bounded repair retries. Tool guardrails can expose
+allowed function calls to the consuming application without executing them
+inside the gateway.
 
 ## Requirements
 
@@ -114,6 +116,12 @@ interface GatewayExecutionResult {
   context: RequestContext;
   durationMs: number;
   lifecycle: readonly LifecycleEvent[];
+  toolGuardrails?: {
+    decision: "allow" | "filter";
+    allowedCallCount: number;
+    blockedCallCount: number;
+    ruleIds: string[];
+  };
 }
 ```
 
@@ -216,6 +224,66 @@ const provider = new OpenAICompatibleProvider({
 });
 ```
 
+## Tool-call guardrail
+
+Applications send strict function definitions on requests where the model may
+call a tool. The gateway returns allowed calls as `message.toolCalls`; it never
+executes them:
+
+```ts
+const result = await gateway.chat.completions.create({
+  messages: [{ role: "user", content: "What is the weather in Pune?" }],
+  tools: [
+    {
+      type: "function",
+      function: {
+        name: "get_weather",
+        strict: true,
+        parameters: {
+          type: "object",
+          properties: { city: { type: "string" } },
+          required: ["city"],
+          additionalProperties: false,
+        },
+      },
+    },
+  ],
+});
+
+for (const call of result.response.choices[0]?.message.toolCalls ?? []) {
+  // Dispatch only calls returned by the gateway through a fixed registry.
+  console.log(call.function.name, JSON.parse(call.function.arguments));
+}
+```
+
+Tool policy supports exact name decisions and small literal argument matchers:
+
+```yaml
+tools:
+  default_action: allow
+  rules:
+    - id: block-shell
+      tool_names: [run_shell]
+      action: block
+    - id: block-known-command
+      tool_names: [run_command]
+      arguments:
+        - path: command
+          operator: equals
+          values: ["blocked literal"]
+      action: block
+```
+
+Name-blocked definitions are removed before the provider call. Returned calls
+must reference an offered tool, contain valid JSON object arguments, satisfy
+that tool's schema, and pass policy before entering `ChatResponse`. In a mixed
+response, blocked calls are removed and allowed siblings remain. If all calls
+are blocked, the request fails with `TOOL_GUARDRAIL_BLOCKED`.
+
+The consumer remains responsible for tool execution and authorization. Literal
+command matching is not a shell sandbox and does not recognize equivalent
+spellings or indirect commands.
+
 ## Local prompt-injection model
 
 Seal the exported model once after training or whenever any artifact file
@@ -315,6 +383,20 @@ recording provider. It asserts that benign requests reach the provider, PII is
 redacted, and prompt-injection requests do not reach it. It does not call an
 external LLM.
 
+To call the configured model with only the output guardrail enabled and print
+the provider output before local validation plus the final guarded response:
+
+```bash
+bun run smoke:output-guardrail
+```
+
+To inspect deterministic tool calls before and after tool-call filtering without
+executing either tool:
+
+```bash
+bun run smoke:tool-guardrail
+```
+
 To compare warmed sequential and parallel input-guardrail latency using only
 synthetic fixtures:
 
@@ -352,7 +434,8 @@ with the gateway error code and reason. It uses `MODEL_BASE_URL`,
 ## Current limitations
 
 - The package is private and not published to a registry.
-- Chat completions are text-only and non-streaming.
+- Chat completions support text and non-streaming function calls.
+- The gateway returns allowed tool calls but does not execute or sandbox tools.
 - Only an OpenAI-compatible provider adapter is included.
 - The prompt-injection model is a classifier, not a substitute for
   authorization, least privilege, or tool isolation.

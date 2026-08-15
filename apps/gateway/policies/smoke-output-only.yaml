@@ -1,0 +1,38 @@
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+enabled: true
+
+metadata:
+  name: smoke-output-only
+  version: 1
+
+defaults:
+  runtime_failure_mode: closed
+  maximum_retries: 1
+
+output:
+  - id: require-smoke-output
+    validator: json_schema
+    schema:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        message:
+          type: string
+          minLength: 1
+        latency_ms:
+          type: number
+          minimum: 0
+        error:
+          anyOf:
+            - type: string
+              minLength: 1
+            - type: "null"
+      required: [status, message, latency_ms, error]
+      additionalProperties: false
+    on_failure:
+      type: retry
+      maximum_retries: 1
+      repair_prompt: Correct the response to match the smoke-test schema.

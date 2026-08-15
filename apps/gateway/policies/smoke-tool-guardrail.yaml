@@ -1,0 +1,17 @@
+apiVersion: guardrails/v1
+kind: GuardrailPolicy
+enabled: true
+metadata:
+  name: smoke-tool-guardrail
+  version: 1
+tools:
+  default_action: allow
+  rules:
+    - id: block-fork-bomb
+      tool_names: [run_shell]
+      arguments:
+        - path: command
+          operator: equals
+          values:
+            - ":(){ :|:& };:"
+      action: block

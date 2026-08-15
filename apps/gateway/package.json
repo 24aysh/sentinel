@@ -1,6 +1,6 @@
 {
   "name": "@llm-gateway/sdk",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "private": true,
   "sideEffects": false,
@@ -22,6 +22,8 @@
   "scripts": {
     "test": "bun test",
     "seal:prompt-injection-model": "bun scripts/seal-prompt-injection-model.ts",
+    "smoke:output-guardrail": "bun scripts/smoke-output-guardrail.ts",
+    "smoke:tool-guardrail": "bun scripts/smoke-tool-guardrail.ts",
     "smoke:prompt-injection": "bun scripts/smoke-prompt-injection.ts",
     "smoke:layer2": "bun scripts/smoke-layer2.ts",
     "benchmark:input-guardrails": "bun scripts/benchmark-input-guardrails.ts",
